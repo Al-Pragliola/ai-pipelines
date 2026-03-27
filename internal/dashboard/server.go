@@ -49,12 +49,12 @@ func NewServer(frontend fs.FS, history *issuehistory.Store, logFile string) (*Se
 		return nil, fmt.Errorf("loading kubeconfig: %w", err)
 	}
 
-	scheme := aiv1alpha1.SchemeBuilder.SchemeBuilder.AddToScheme
+	addScheme := aiv1alpha1.SchemeBuilder.SchemeBuilder.AddToScheme
 	k8sClient, err := client.New(cfg, client.Options{})
 	if err != nil {
 		return nil, fmt.Errorf("creating k8s client: %w", err)
 	}
-	if err := scheme(k8sClient.Scheme()); err != nil {
+	if err := addScheme(k8sClient.Scheme()); err != nil {
 		return nil, fmt.Errorf("adding scheme: %w", err)
 	}
 
@@ -135,20 +135,20 @@ type pipelineResponse struct {
 }
 
 type runResponse struct {
-	Name         string                   `json:"name"`
-	Namespace    string                   `json:"namespace"`
-	Pipeline     string                   `json:"pipeline"`
-	IssueNumber  int                      `json:"issueNumber"`
-	IssueKey     string                   `json:"issueKey"`
-	IssueTitle   string                   `json:"issueTitle"`
-	Phase        string                   `json:"phase"`
-	CurrentStep  string                   `json:"currentStep"`
-	Branch       string                   `json:"branch"`
-	WaitingFor   string                   `json:"waitingFor,omitempty"`
-	DiffJobName  string                   `json:"diffJobName,omitempty"`
-	ChatPodName  string                   `json:"chatPodName,omitempty"`
-	ResolvedRepo *aiv1alpha1.SelectedRepo `json:"resolvedRepo,omitempty"`
-	TriageResult *aiv1alpha1.TriageResult `json:"triageResult,omitempty"`
+	Name            string                   `json:"name"`
+	Namespace       string                   `json:"namespace"`
+	Pipeline        string                   `json:"pipeline"`
+	IssueNumber     int                      `json:"issueNumber"`
+	IssueKey        string                   `json:"issueKey"`
+	IssueTitle      string                   `json:"issueTitle"`
+	Phase           string                   `json:"phase"`
+	CurrentStep     string                   `json:"currentStep"`
+	Branch          string                   `json:"branch"`
+	WaitingFor      string                   `json:"waitingFor,omitempty"`
+	DiffJobName     string                   `json:"diffJobName,omitempty"`
+	ChatPodName     string                   `json:"chatPodName,omitempty"`
+	ResolvedRepo    *aiv1alpha1.SelectedRepo `json:"resolvedRepo,omitempty"`
+	TriageResult    *aiv1alpha1.TriageResult `json:"triageResult,omitempty"`
 	StartedAt       *string                  `json:"startedAt"`
 	FinishedAt      *string                  `json:"finishedAt"`
 	DurationSeconds *int64                   `json:"durationSeconds,omitempty"`
@@ -228,8 +228,8 @@ func (s *Server) handleGetPipeline(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, struct {
-		Name      string                 `json:"name"`
-		Namespace string                 `json:"namespace"`
+		Name      string                  `json:"name"`
+		Namespace string                  `json:"namespace"`
 		Spec      aiv1alpha1.PipelineSpec `json:"spec"`
 	}{
 		Name:      pipeline.Name,
@@ -266,13 +266,13 @@ func (s *Server) handleGetPipelineYAML(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "text/yaml; charset=utf-8")
-	w.Write(out)
+	_, _ = w.Write(out)
 }
 
 func (s *Server) handleCreatePipeline(w http.ResponseWriter, r *http.Request) {
 	var body struct {
-		Name      string                 `json:"name"`
-		Namespace string                 `json:"namespace"`
+		Name      string                  `json:"name"`
+		Namespace string                  `json:"namespace"`
 		Spec      aiv1alpha1.PipelineSpec `json:"spec"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
@@ -464,10 +464,10 @@ func (s *Server) handleGetLogs(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, fmt.Sprintf("failed to get logs: %v", err), http.StatusInternalServerError)
 		return
 	}
-	defer logStream.Close()
+	defer logStream.Close() //nolint:errcheck
 
 	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
-	io.Copy(w, logStream)
+	_, _ = io.Copy(w, logStream)
 }
 
 func (s *Server) handleListRepos(w http.ResponseWriter, r *http.Request) {
@@ -562,9 +562,9 @@ func (s *Server) handleOperatorLogs(w http.ResponseWriter, r *http.Request) {
 			TailLines: &tailLines,
 		}).Stream(r.Context())
 		if err == nil {
-			defer logStream.Close()
+			defer logStream.Close() //nolint:errcheck
 			w.Header().Set("Content-Type", "text/plain; charset=utf-8")
-			io.Copy(w, logStream)
+			_, _ = io.Copy(w, logStream)
 			return
 		}
 	}
@@ -591,7 +591,7 @@ func (s *Server) serveLogFile(w http.ResponseWriter, tailLines int64) {
 	}
 
 	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
-	w.Write([]byte(strings.Join(lines, "\n")))
+	_, _ = w.Write([]byte(strings.Join(lines, "\n")))
 }
 
 func (s *Server) handleListHistory(w http.ResponseWriter, r *http.Request) {
@@ -992,10 +992,10 @@ func (s *Server) handleGetDiff(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, fmt.Sprintf("failed to get diff logs: %v", err), http.StatusInternalServerError)
 		return
 	}
-	defer logStream.Close()
+	defer logStream.Close() //nolint:errcheck
 
 	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
-	io.Copy(w, logStream)
+	_, _ = io.Copy(w, logStream)
 }
 
 func (s *Server) handleDeleteRun(w http.ResponseWriter, r *http.Request) {
@@ -1078,7 +1078,7 @@ func (s *Server) handleStartChat(w http.ResponseWriter, r *http.Request) {
 		})
 	}
 	// Wait for diff job pods to be gone so PVC is free
-	for i := 0; i < 20; i++ {
+	for range 20 {
 		pods, err := s.clientset.CoreV1().Pods(namespace).List(r.Context(), metav1.ListOptions{
 			LabelSelector: "job-name=" + diffJobName,
 		})
@@ -1308,7 +1308,7 @@ func (s *Server) handleChatMessage(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		// If we already started writing, we can't send an HTTP error.
 		// Write the error as a JSON line instead.
-		fmt.Fprintf(fw, "\n{\"type\":\"error\",\"error\":%q}\n", err.Error())
+		_, _ = fmt.Fprintf(fw, "\n{\"type\":\"error\",\"error\":%q}\n", err.Error())
 	}
 }
 
@@ -1395,7 +1395,7 @@ func (s *Server) handleChatDiff(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
-	w.Write(stdout.Bytes())
+	_, _ = w.Write(stdout.Bytes())
 }
 
 func (s *Server) handleRefreshDiff(w http.ResponseWriter, r *http.Request) {
@@ -1415,7 +1415,7 @@ func (s *Server) handleRefreshDiff(w http.ResponseWriter, r *http.Request) {
 		PropagationPolicy: &propagation,
 	})
 	// Wait briefly for the old job's pod to be gone so the PVC is free
-	for i := 0; i < 10; i++ {
+	for range 10 {
 		pods, err := s.clientset.CoreV1().Pods(namespace).List(r.Context(), metav1.ListOptions{
 			LabelSelector: "job-name=" + jobName,
 		})
@@ -1427,9 +1427,7 @@ func (s *Server) handleRefreshDiff(w http.ResponseWriter, r *http.Request) {
 
 	// Create new diff job (mirrors createDiffJob in the controller)
 	var backoffLimit int32 = 0
-	script := fmt.Sprintf(
-		`cd /workspace && git config --global --add safe.directory /workspace && git add -A && git diff --cached --no-color HEAD -- ':!.test-failures.md'`,
-	)
+	script := `cd /workspace && git config --global --add safe.directory /workspace && git add -A && git diff --cached --no-color HEAD -- ':!.test-failures.md'`
 
 	job := &batchv1.Job{
 		ObjectMeta: metav1.ObjectMeta{
@@ -1524,20 +1522,17 @@ func toRunResponse(run *aiv1alpha1.PipelineRun) runResponse {
 		Steps:        make([]stepResponse, 0, len(run.Status.Steps)),
 	}
 	if run.Status.StartedAt != nil {
-		t := run.Status.StartedAt.Time.Format(time.RFC3339)
+		t := run.Status.StartedAt.Format(time.RFC3339)
 		r.StartedAt = &t
 		end := time.Now()
 		if run.Status.FinishedAt != nil {
 			end = run.Status.FinishedAt.Time
 		}
-		d := int64(end.Sub(run.Status.StartedAt.Time).Seconds())
-		if d < 0 {
-			d = 0
-		}
+		d := max(int64(end.Sub(run.Status.StartedAt.Time).Seconds()), 0)
 		r.DurationSeconds = &d
 	}
 	if run.Status.FinishedAt != nil {
-		t := run.Status.FinishedAt.Time.Format(time.RFC3339)
+		t := run.Status.FinishedAt.Format(time.RFC3339)
 		r.FinishedAt = &t
 	}
 	for _, s := range run.Status.Steps {
@@ -1550,20 +1545,17 @@ func toRunResponse(run *aiv1alpha1.PipelineRun) runResponse {
 			Message: s.Message,
 		}
 		if s.StartedAt != nil {
-			t := s.StartedAt.Time.Format(time.RFC3339)
+			t := s.StartedAt.Format(time.RFC3339)
 			sr.StartedAt = &t
 			end := time.Now()
 			if s.FinishedAt != nil {
 				end = s.FinishedAt.Time
 			}
-			d := int64(end.Sub(s.StartedAt.Time).Seconds())
-			if d < 0 {
-				d = 0
-			}
+			d := max(int64(end.Sub(s.StartedAt.Time).Seconds()), 0)
 			sr.DurationSeconds = &d
 		}
 		if s.FinishedAt != nil {
-			t := s.FinishedAt.Time.Format(time.RFC3339)
+			t := s.FinishedAt.Format(time.RFC3339)
 			sr.FinishedAt = &t
 		}
 		r.Steps = append(r.Steps, sr)
@@ -1573,5 +1565,5 @@ func toRunResponse(run *aiv1alpha1.PipelineRun) runResponse {
 
 func writeJSON(w http.ResponseWriter, v any) {
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(v)
+	_ = json.NewEncoder(w).Encode(v)
 }

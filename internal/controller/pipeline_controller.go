@@ -38,6 +38,8 @@ import (
 	"github.com/Al-Pragliola/ai-pipelines/internal/trigger"
 )
 
+const defaultSecretKey = "token"
+
 // PipelineReconciler reconciles a Pipeline object.
 type PipelineReconciler struct {
 	client.Client
@@ -66,15 +68,15 @@ func (r *PipelineReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 		return ctrl.Result{}, err
 	}
 
-	trigger := pipeline.Spec.Trigger
+	trig := pipeline.Spec.Trigger
 
 	// Read trigger credentials from Secret
 	var secretRef aiv1alpha1.SecretKeyRef
 	switch {
-	case trigger.GitHub != nil:
-		secretRef = trigger.GitHub.SecretRef
-	case trigger.Jira != nil:
-		secretRef = trigger.Jira.SecretRef
+	case trig.GitHub != nil:
+		secretRef = trig.GitHub.SecretRef
+	case trig.Jira != nil:
+		secretRef = trig.Jira.SecretRef
 	default:
 		log.Info("no trigger configured")
 		return ctrl.Result{}, nil
@@ -88,8 +90,8 @@ func (r *PipelineReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 
 	// For Jira Cloud, also read email if present
 	var jiraEmail string
-	if trigger.Jira != nil {
-		jiraEmail, _ = r.readSecretKeyOptional(ctx, pipeline.Namespace, trigger.Jira.SecretRef.Name, "email")
+	if trig.Jira != nil {
+		jiraEmail, _ = r.readSecretKeyOptional(ctx, pipeline.Namespace, trig.Jira.SecretRef.Name, "email")
 	}
 
 	// Start or restart the poller
@@ -114,7 +116,7 @@ func (r *PipelineReconciler) readSecretKey(ctx context.Context, namespace string
 	}
 	key := ref.Key
 	if key == "" {
-		key = "token"
+		key = defaultSecretKey
 	}
 	val, ok := secret.Data[key]
 	if !ok {

@@ -183,6 +183,7 @@ func (r *PipelineRunReconciler) reconcilePending(ctx context.Context, run *aiv1a
 	return ctrl.Result{Requeue: true}, nil
 }
 
+//nolint:gocyclo // reconcile state machine is inherently complex
 func (r *PipelineRunReconciler) reconcileRunning(ctx context.Context, run *aiv1alpha1.PipelineRun, pipeline *aiv1alpha1.Pipeline) (ctrl.Result, error) {
 	log := logf.FromContext(ctx)
 
@@ -741,7 +742,7 @@ func (r *PipelineRunReconciler) ensurePVC(ctx context.Context, run *aiv1alpha1.P
 	return r.Create(ctx, pvc)
 }
 
-func (r *PipelineRunReconciler) buildJob(ctx context.Context, run *aiv1alpha1.PipelineRun, pipeline *aiv1alpha1.Pipeline, step *aiv1alpha1.StepSpec, jobName string, attempt int) (*batchv1.Job, error) {
+func (r *PipelineRunReconciler) buildJob(ctx context.Context, run *aiv1alpha1.PipelineRun, pipeline *aiv1alpha1.Pipeline, step *aiv1alpha1.StepSpec, jobName string, _ int) (*batchv1.Job, error) {
 	var backoffLimit int32 = 0
 
 	job := &batchv1.Job{
@@ -805,7 +806,7 @@ func (r *PipelineRunReconciler) buildJob(ctx context.Context, run *aiv1alpha1.Pi
 	return job, nil
 }
 
-func (r *PipelineRunReconciler) configureCheckoutJob(_ context.Context, job *batchv1.Job, run *aiv1alpha1.PipelineRun, pipeline *aiv1alpha1.Pipeline, step *aiv1alpha1.StepSpec) error {
+func (r *PipelineRunReconciler) configureCheckoutJob(_ context.Context, job *batchv1.Job, run *aiv1alpha1.PipelineRun, pipeline *aiv1alpha1.Pipeline, _ *aiv1alpha1.StepSpec) error {
 	repo, err := r.resolveRepoInfo(pipeline, run)
 	if err != nil {
 		return fmt.Errorf("resolving repo for checkout: %w", err)
@@ -1049,8 +1050,9 @@ func addDinDSidecar(job *batchv1.Job) {
 	//    so Docker can manage sub-cgroups naturally without --cgroup-parent hacks.
 	// 2. CLI setup: copies docker binary to shared volume, then exits.
 
-	dindInitContainers := []corev1.Container{
-		{
+	dindInitContainers := make([]corev1.Container, 0, 2+len(job.Spec.Template.Spec.InitContainers)) //nolint:mnd
+	dindInitContainers = append(dindInitContainers,
+		corev1.Container{
 			Name:          "dind",
 			Image:         "docker:27-dind",
 			RestartPolicy: &restartAlways,
@@ -1088,7 +1090,7 @@ exec dockerd --host=tcp://0.0.0.0:2375 --host=unix:///var/run/docker.sock --stor
 				{Name: "dind-storage", MountPath: "/var/lib/docker"},
 			},
 		},
-		{
+		corev1.Container{
 			Name:    "docker-cli-setup",
 			Image:   "docker:27-cli",
 			Command: []string{"cp", "/usr/local/bin/docker", "/docker-bin/docker"},
@@ -1096,7 +1098,7 @@ exec dockerd --host=tcp://0.0.0.0:2375 --host=unix:///var/run/docker.sock --stor
 				{Name: "docker-bin", MountPath: "/docker-bin"},
 			},
 		},
-	}
+	)
 	job.Spec.Template.Spec.InitContainers = append(dindInitContainers, job.Spec.Template.Spec.InitContainers...)
 
 	// Inject Docker env + CLI mount into all main containers
@@ -1354,7 +1356,7 @@ func (r *PipelineRunReconciler) readTriageResult(ctx context.Context, namespace,
 	if err != nil {
 		return nil, fmt.Errorf("reading triage pod logs: %w", err)
 	}
-	defer logStream.Close()
+	defer logStream.Close() //nolint:errcheck
 
 	data, err := io.ReadAll(logStream)
 	if err != nil {
@@ -1457,14 +1459,15 @@ func renderString(tmplStr string, data templateData) (string, error) {
 // fetchRepoMetadata fetches README content and top-level directory listing
 // from GitHub so the triage AI can make informed repo selection decisions
 // without needing direct repo access.
-func fetchRepoMetadata(ctx context.Context, owner, name, token string) (readme string, fileTree string) {
+func fetchRepoMetadata(ctx context.Context, owner, name, token string) (string, string) {
+	var readme, fileTree string
 	// Fetch README
 	readmeURL := fmt.Sprintf("https://api.github.com/repos/%s/%s/readme", owner, name)
 	if req, err := http.NewRequestWithContext(ctx, "GET", readmeURL, nil); err == nil {
 		req.Header.Set("Authorization", "Bearer "+token)
 		req.Header.Set("Accept", "application/vnd.github.raw+json")
 		if resp, err := http.DefaultClient.Do(req); err == nil {
-			defer resp.Body.Close()
+			defer resp.Body.Close() //nolint:errcheck
 			if resp.StatusCode == http.StatusOK {
 				data, _ := io.ReadAll(resp.Body)
 				readme = string(data)
@@ -1481,7 +1484,7 @@ func fetchRepoMetadata(ctx context.Context, owner, name, token string) (readme s
 		req.Header.Set("Authorization", "Bearer "+token)
 		req.Header.Set("Accept", "application/vnd.github+json")
 		if resp, err := http.DefaultClient.Do(req); err == nil {
-			defer resp.Body.Close()
+			defer resp.Body.Close() //nolint:errcheck
 			if resp.StatusCode == http.StatusOK {
 				var entries []struct {
 					Name string `json:"name"`
@@ -1502,7 +1505,7 @@ func fetchRepoMetadata(ctx context.Context, owner, name, token string) (readme s
 		}
 	}
 
-	return
+	return readme, fileTree
 }
 
 func (r *PipelineRunReconciler) readSecretToken(ctx context.Context, namespace string, ref *aiv1alpha1.SecretKeyRef) (string, error) {
@@ -1515,7 +1518,7 @@ func (r *PipelineRunReconciler) readSecretToken(ctx context.Context, namespace s
 	}
 	key := ref.Key
 	if key == "" {
-		key = "token"
+		key = defaultSecretKey
 	}
 	val, ok := secret.Data[key]
 	if !ok {
@@ -1528,7 +1531,7 @@ func secretKey(ref aiv1alpha1.SecretKeyRef) string {
 	if ref.Key != "" {
 		return ref.Key
 	}
-	return "token"
+	return defaultSecretKey
 }
 
 // SetupWithManager sets up the controller with the Manager.

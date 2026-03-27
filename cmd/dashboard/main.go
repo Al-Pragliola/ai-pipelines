@@ -33,7 +33,7 @@ func main() {
 	if err != nil {
 		log.Fatalf("failed to open history database: %v", err)
 	}
-	defer history.Close()
+	defer history.Close() //nolint:errcheck
 
 	srv, err := dashboard.NewServer(frontend, history, *logFile)
 	if err != nil {

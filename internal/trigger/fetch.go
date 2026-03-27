@@ -38,7 +38,7 @@ func FetchGitHubIssues(ctx context.Context, gh *aiv1alpha1.GitHubTriggerSpec, to
 	if err != nil {
 		return nil, err
 	}
-	defer resp.Body.Close()
+	defer resp.Body.Close() //nolint:errcheck
 
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("github api returned %d", resp.StatusCode)
@@ -88,7 +88,7 @@ func FetchJiraIssues(ctx context.Context, jira *aiv1alpha1.JiraTriggerSpec, toke
 	if err != nil {
 		return nil, err
 	}
-	defer resp.Body.Close()
+	defer resp.Body.Close() //nolint:errcheck
 
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("jira api returned %d", resp.StatusCode)
@@ -111,7 +111,7 @@ func FetchJiraIssues(ctx context.Context, jira *aiv1alpha1.JiraTriggerSpec, toke
 	for i, ji := range result.Issues {
 		number := 0
 		if parts := strings.SplitN(ji.Key, "-", 2); len(parts) == 2 {
-			fmt.Sscanf(parts[1], "%d", &number)
+			_, _ = fmt.Sscanf(parts[1], "%d", &number)
 		}
 
 		issues[i] = Issue{

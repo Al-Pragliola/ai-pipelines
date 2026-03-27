@@ -100,7 +100,7 @@ func main() {
 			setupLog.Error(err, "Failed to open log file", "path", logFilePath)
 			os.Exit(1)
 		}
-		defer logFile.Close()
+		defer logFile.Close() //nolint:errcheck
 		opts.DestWriter = io.MultiWriter(os.Stderr, logFile)
 	}
 
@@ -203,7 +203,7 @@ func main() {
 		setupLog.Error(err, "Failed to open issue history database", "path", historyDBPath)
 		os.Exit(1)
 	}
-	defer history.Close()
+	defer history.Close() //nolint:errcheck
 
 	if err := (&controller.PipelineReconciler{
 		Client:  mgr.GetClient(),

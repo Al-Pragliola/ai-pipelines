@@ -33,12 +33,12 @@ func New(dbPath string) (*Store, error) {
 	}
 	// Enable WAL mode for better concurrent read performance.
 	if _, err := db.Exec(`PRAGMA journal_mode=WAL`); err != nil {
-		db.Close()
+		_ = db.Close()
 		return nil, fmt.Errorf("setting WAL mode: %w", err)
 	}
 	s := &Store{db: db}
 	if err := s.migrate(); err != nil {
-		db.Close()
+		_ = db.Close()
 		return nil, fmt.Errorf("running history migrations: %w", err)
 	}
 	return s, nil
@@ -95,7 +95,7 @@ func (s *Store) List(ctx context.Context) ([]Record, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer rows.Close() //nolint:errcheck
 
 	var records []Record
 	for rows.Next() {
