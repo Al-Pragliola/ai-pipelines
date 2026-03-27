@@ -51,7 +51,27 @@ var _ = Describe("Pipeline Controller", func() {
 						Name:      resourceName,
 						Namespace: "default",
 					},
-					// TODO(user): Specify other spec details if needed.
+					Spec: aiv1alpha1.PipelineSpec{
+						Trigger: aiv1alpha1.TriggerSpec{
+							GitHub: &aiv1alpha1.GitHubTriggerSpec{
+								Owner:    "test-owner",
+								Repo:     "test-repo",
+								Assignee: "test-user",
+								SecretRef: aiv1alpha1.SecretKeyRef{
+									Name: "test-secret",
+								},
+							},
+						},
+						AI: aiv1alpha1.AISpec{
+							Image: "test-image:latest",
+						},
+						Steps: []aiv1alpha1.StepSpec{
+							{
+								Name: "checkout",
+								Type: "git-checkout",
+							},
+						},
+					},
 				}
 				Expect(k8sClient.Create(ctx, resource)).To(Succeed())
 			}
