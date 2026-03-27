@@ -1,0 +1,145 @@
+apiVersion: ai.aipipelines.io/v1alpha1
+kind: Pipeline
+metadata:
+  name: my-pipeline
+  namespace: default
+spec:
+  repo:
+    owner: "your-github-org"
+    name: "your-repo"
+    forkOwner: "your-github-username"
+    secretRef:
+      name: github-token
+
+  trigger:
+    github:
+      owner: "your-github-org"
+      repo: "your-repo"
+      assignee: "your-github-username"
+      pollInterval: "30s"
+      labels: []
+      secretRef:
+        name: github-token
+
+  ai:
+    image: "localhost/ai-pipelines-claude:latest"
+    env:
+      # Anthropic API key (direct)
+      # ANTHROPIC_API_KEY is read from the secret referenced below (ai-credentials)
+
+      # --- OR use Vertex AI ---
+      # CLAUDE_CODE_USE_VERTEX: "1"
+      # ANTHROPIC_VERTEX_PROJECT_ID: "your-gcp-project-id"
+      # CLOUD_ML_REGION: "us-east5"
+      # GOOGLE_APPLICATION_CREDENTIALS: "/tmp/gcp-creds.json"
+      # GCE_METADATA_HOST: "localhost"  # only needed outside GCP VMs
+    secretRef:
+      name: ai-credentials
+      key: credentials.json
+    credentialsMountPath: "/tmp/gcp-creds.json"
+    imagePullPolicy: Never
+
+  steps:
+    - name: checkout
+      type: git-checkout
+      branchTemplate: "ai/{{.IssueNumber}}-{{.Timestamp}}"
+
+    - name: write-tests
+      type: ai
+      dind: true
+      promptTemplate: |
+        Issue #{{.IssueNumber}}: {{.IssueTitle}}
+
+        {{.IssueBody}}
+
+        ENVIRONMENT SETUP:
+        Before starting, check the repository's README.md, AGENTS.md, and Makefile to determine
+        what language/tools are needed. Install any missing dependencies:
+        - Go: download from https://go.dev/dl/ and install to /usr/local/go, add to PATH
+        - Node.js: use `curl -fsSL https://deb.nodesource.com/setup_lts.x | bash - && apt-get install -y nodejs`
+        - Python: `apt-get update && apt-get install -y python3 python3-pip`
+        - For other tools, install as appropriate
+        Docker is available if needed.
+
+        TASK:
+        You are on branch `{{.Branch}}`. Stay on this branch — do NOT switch to main or any other branch.
+        Your task is to write tests that verify the requirements described in the issue above.
+        Look at the existing test patterns in the codebase and follow them.
+        If there is a Makefile, check the available test targets for conventions.
+        The tests should FAIL at this point — the implementation does not exist yet.
+        Do NOT implement the feature — only write the tests.
+        Do NOT run git add, git commit, or git push — the pipeline handles all git operations separately.
+
+    - name: implement
+      type: ai
+      promptTemplate: |
+        Issue #{{.IssueNumber}}: {{.IssueTitle}}
+
+        {{.IssueBody}}
+
+        ENVIRONMENT SETUP:
+        Before starting, check the repository's README.md, AGENTS.md, and Makefile to determine
+        what language/tools are needed. Install any missing dependencies:
+        - Go: download from https://go.dev/dl/ and install to /usr/local/go, add to PATH
+        - Node.js: use `curl -fsSL https://deb.nodesource.com/setup_lts.x | bash - && apt-get install -y nodejs`
+        - Python: `apt-get update && apt-get install -y python3 python3-pip`
+        - For other tools, install as appropriate
+
+        TASK:
+        You are on branch `{{.Branch}}`. Stay on this branch — do NOT switch to main or any other branch.
+        Tests have already been written for this issue. Make the changes to satisfy the issue
+        requirements and make the tests pass.
+
+        If the file `/workspace/.test-failures.md` exists, read it first — it contains the output
+        from a previous test run that failed. Use it to understand exactly what is broken and fix it.
+
+        Do NOT modify the test files.
+        Do NOT run git add, git commit, or git push — the pipeline handles all git operations separately.
+
+    - name: test
+      type: ai
+      dind: true
+      failureFile: /workspace/.test-failures.md
+      onFailure: implement
+      maxRetries: 3
+      promptTemplate: |
+        You are on branch `{{.Branch}}`. Your only task is to run the existing tests for this repository.
+
+        ENVIRONMENT SETUP:
+        You have Docker available. Before running tests, you MUST set up the required toolchain.
+        Check the repository's README.md, AGENTS.md, and Makefile to determine what language/tools
+        are needed, then install any missing dependencies:
+        - Go: download from https://go.dev/dl/ and install to /usr/local/go, add to PATH
+        - Node.js: use `curl -fsSL https://deb.nodesource.com/setup_lts.x | bash - && apt-get install -y nodejs`
+        - Python: `apt-get update && apt-get install -y python3 python3-pip`
+        - For other tools, install as appropriate
+        You can also use Docker to run tests if the project uses container-based testing (Kind, docker-compose, etc).
+
+        TESTING:
+        Check for testing instructions in these files (in order of priority):
+        1. AGENTS.md or CLAUDE.md (AI-specific instructions)
+        2. Makefile (look for test targets like `make test`, `make check`, `make verify`)
+        3. README.md (testing section)
+        4. package.json (for `npm test` or similar)
+
+        Run the appropriate test commands.
+
+        IMPORTANT: Run test packages/suites SEQUENTIALLY, not in parallel. The Docker-in-Docker
+        environment has limited resources and running tests in parallel can exhaust process limits,
+        causing spurious failures. Use flags like `go test -p 1` (Go), `--runInBand` (Jest), or
+        equivalent sequential options for your test runner.
+
+        If ALL tests pass, make sure `/workspace/.test-failures.md` does NOT exist (delete it if present).
+
+        If ANY test fails, write a detailed failure report to `/workspace/.test-failures.md` containing:
+        - The exact commands that were run
+        - The full error output
+        - Which tests failed and why
+        Then stop — do not attempt to fix anything.
+
+        Do NOT modify any source code — only run tests and report results.
+        Do NOT run git add, git commit, or git push.
+
+    - name: push
+      type: git-push
+      requireApproval: true

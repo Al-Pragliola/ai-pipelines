@@ -1,0 +1,9 @@
+apiVersion: ai.aipipelines.io/v1alpha1
+kind: PipelineRun
+metadata:
+  labels:
+    app.kubernetes.io/name: ai-pipelines
+    app.kubernetes.io/managed-by: kustomize
+  name: pipelinerun-sample
+spec:
+  # TODO(user): Add fields here

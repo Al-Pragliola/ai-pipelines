@@ -1,0 +1,5 @@
+## Append samples of your project ##
+resources:
+- ai_v1alpha1_pipeline.yaml
+- ai_v1alpha1_pipelinerun.yaml
+# +kubebuilder:scaffold:manifestskustomizesamples

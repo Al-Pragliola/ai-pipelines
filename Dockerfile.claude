@@ -1,0 +1,37 @@
+FROM ubuntu:24.04
+
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
+        curl \
+        git \
+        ca-certificates \
+        build-essential \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install Claude Code CLI as root, then move binary to /usr/local/bin
+# so it's accessible to any user (--dangerously-skip-permissions blocks root)
+RUN curl -fsSL https://claude.ai/install.sh | bash && \
+    cp -L /root/.local/bin/claude /usr/local/bin/claude && \
+    chmod 755 /usr/local/bin/claude
+
+# Git config is set at runtime via --user; configure globally here as fallback
+RUN git config --global user.name "AI Pipeline" && \
+    git config --global user.email "ai-pipeline@noreply"
+
+# ---------------------------------------------------------------
+# Project-specific tools: extend this image for your stack.
+# Examples:
+#
+#   Go:
+#     COPY --from=golang:1.23 /usr/local/go /usr/local/go
+#     ENV PATH="/usr/local/go/bin:${PATH}"
+#
+#   Node:
+#     RUN curl -fsSL https://deb.nodesource.com/setup_22.x | bash - \
+#         && apt-get install -y nodejs
+#
+#   Python:
+#     RUN apt-get update && apt-get install -y python3 python3-pip
+# ---------------------------------------------------------------
+
+ENTRYPOINT ["claude", "-p", "--dangerously-skip-permissions", "--model", "claude-opus-4-6", "--verbose", "--output-format", "stream-json"]

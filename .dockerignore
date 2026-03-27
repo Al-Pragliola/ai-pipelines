@@ -1,0 +1,18 @@
+# Ignore build artifacts, dependencies, and non-essential files
+bin/
+testbin/
+node_modules/
+dashboard/node_modules/
+dashboard/dist/
+.git/
+*.md
+LICENSE
+
+# Ignore test files
+**/*_test.go
+
+# Ignore config/samples and other non-build dirs
+config/
+hack/
+.github/
+.vscode/

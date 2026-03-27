@@ -1,0 +1,10 @@
+FROM ai-pipelines-claude:latest
+
+COPY --from=golang:1.25 /usr/local/go /usr/local/go
+ENV PATH="/usr/local/go/bin:${PATH}"
+
+# Go env dirs must be writable by UID 1000 (K8s SecurityContext: runAsUser=1000)
+ENV GOPATH="/home/claude/go"
+ENV GOCACHE="/home/claude/.cache/go-build"
+RUN mkdir -p /home/claude/go /home/claude/.cache/go-build && \
+    chown -R 1000:1000 /home/claude
