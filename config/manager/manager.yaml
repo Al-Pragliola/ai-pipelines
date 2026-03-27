@@ -93,7 +93,11 @@ spec:
           requests:
             cpu: 10m
             memory: 64Mi
-        volumeMounts: []
-      volumes: []
+        volumeMounts:
+        - name: history-db
+          mountPath: /var/lib/ai-pipelines
+      volumes:
+      - name: history-db
+        emptyDir: {} # TODO: use a PVC to persist issue history across pod restarts
       serviceAccountName: controller-manager
       terminationGracePeriodSeconds: 10
