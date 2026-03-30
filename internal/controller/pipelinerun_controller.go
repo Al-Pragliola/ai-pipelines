@@ -996,6 +996,61 @@ func (r *PipelineRunReconciler) configureAIJob(_ context.Context, job *batchv1.J
 		},
 	}
 
+	// If the step has a workflowRef, prepend a git clone init container
+	if step.WorkflowRef != nil {
+		wf := step.WorkflowRef
+		ref := wf.Ref
+		if ref == "" {
+			ref = "HEAD"
+		}
+
+		// Add temp volume for the workflow clone
+		job.Spec.Template.Spec.Volumes = append(job.Spec.Template.Spec.Volumes, corev1.Volume{
+			Name:         "workflow-tmp",
+			VolumeSource: corev1.VolumeSource{EmptyDir: &corev1.EmptyDirVolumeSource{}},
+		})
+
+		// Build the clone + copy script
+		cloneScript := fmt.Sprintf(`set -e
+git clone --depth 1 --single-branch --branch %s https://x-access-token:${GITHUB_TOKEN}@github.com/%s.git /tmp/workflow
+cd /tmp/workflow/%s
+# Copy .claude/ directory (merge, no clobber)
+if [ -d .claude ]; then cp -rn .claude %s/; fi
+# Copy .ambient/ directory (merge, no clobber)
+if [ -d .ambient ]; then cp -rn .ambient %s/; fi
+# Copy CLAUDE.md only if it does not already exist in the workspace
+if [ -f CLAUDE.md ] && [ ! -f %s/CLAUDE.md ]; then cp CLAUDE.md %s/; fi
+`,
+			ref, wf.Repo, wf.Path,
+			workspacePath, workspacePath,
+			workspacePath, workspacePath)
+
+		secretRef := pipeline.Spec.Repo.SecretRef
+		job.Spec.Template.Spec.InitContainers = append(job.Spec.Template.Spec.InitContainers, corev1.Container{
+			Name:    "workflow-clone",
+			Image:   gitImage,
+			Command: []string{"/bin/sh", "-c"},
+			Args:    []string{cloneScript},
+			VolumeMounts: []corev1.VolumeMount{
+				{Name: "workspace", MountPath: workspacePath},
+				{Name: "workflow-tmp", MountPath: "/tmp/workflow"},
+			},
+			Env: []corev1.EnvVar{
+				{
+					Name: "GITHUB_TOKEN",
+					ValueFrom: &corev1.EnvVarSource{
+						SecretKeyRef: &corev1.SecretKeySelector{
+							LocalObjectReference: corev1.LocalObjectReference{
+								Name: secretRef.Name,
+							},
+							Key: secretKey(secretRef),
+						},
+					},
+				},
+			},
+		})
+	}
+
 	return nil
 }
 
