@@ -32,6 +32,13 @@ local_resource(
     resource_deps=['crd-install'],
 )
 
+local_resource(
+    'sample-cr-spot',
+    cmd='kubectl apply -f local/pipeline-spot.yaml',
+    deps=['local/pipeline-spot.yaml'],
+    resource_deps=['crd-install'],
+)
+
 # --- Shared local data directory for SQLite history DB ---
 local_resource(
     'data-dir',
