@@ -1,0 +1,67 @@
+apiVersion: ai.aipipelines.io/v1alpha1
+kind: Pipeline
+metadata:
+  name: bugfix-workflow-pipeline
+  namespace: default
+spec:
+  repo:
+    owner: "your-github-org"
+    name: "your-repo"
+    forkOwner: "your-github-username"
+    secretRef:
+      name: github-token
+
+  trigger:
+    github:
+      owner: "your-github-org"
+      repo: "your-repo"
+      assignee: "your-github-username"
+      pollInterval: "30s"
+      labels: []
+      secretRef:
+        name: github-token
+
+  ai:
+    image: "localhost/ai-pipelines-claude:latest"
+    secretRef:
+      name: ai-credentials
+      key: credentials.json
+    credentialsMountPath: "/tmp/gcp-creds.json"
+    imagePullPolicy: Never
+
+  steps:
+    - name: checkout
+      type: git-checkout
+      branchTemplate: "ai/{{.IssueNumber}}-{{.Timestamp}}"
+
+    - name: fix
+      type: ai
+      workflowRef:
+        repo: "ambient-code/workflows"
+        path: "bugfix"
+      promptTemplate: |
+        Issue #{{.IssueNumber}}: {{.IssueTitle}}
+
+        {{.IssueBody}}
+
+        You are on branch `{{.Branch}}`. Stay on this branch.
+        Run /speedrun to execute the bugfix workflow.
+
+    - name: test
+      type: ai
+      dind: true
+      failureFile: /workspace/.test-failures.md
+      onFailure: fix
+      maxRetries: 3
+      promptTemplate: |
+        You are on branch `{{.Branch}}`. Run the tests for this repository.
+        Check AGENTS.md, Makefile, and README.md for test instructions.
+
+        If ALL tests pass, delete `/workspace/.test-failures.md` if it exists.
+        If ANY test fails, write a failure report to `/workspace/.test-failures.md` and stop.
+
+        Do NOT modify any source code. Do NOT run git commands.
+
+    - name: push
+      type: git-push
+      requireApproval: true
