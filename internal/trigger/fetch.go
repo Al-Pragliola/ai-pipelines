@@ -11,6 +11,8 @@ import (
 	aiv1alpha1 "github.com/Al-Pragliola/ai-pipelines/api/v1alpha1"
 )
 
+var gitHubAPIBaseURL = "https://api.github.com"
+
 type Issue struct {
 	Number int    `json:"number"`
 	Key    string `json:"key,omitempty"` // "#42" for GitHub, "PROJ-123" for Jira
@@ -119,6 +121,56 @@ func FetchJiraIssues(ctx context.Context, jira *aiv1alpha1.JiraTriggerSpec, toke
 			Key:    ji.Key,
 			Title:  ji.Fields.Summary,
 			Body:   FlattenADF(ji.Fields.Description),
+		}
+	}
+	return issues, nil
+}
+
+// FetchGitHubReviewRequests fetches open PRs where the configured reviewer has a pending review request.
+func FetchGitHubReviewRequests(ctx context.Context, spec *aiv1alpha1.GitHubPRReviewTriggerSpec, token string) ([]Issue, error) {
+	url := fmt.Sprintf("%s/repos/%s/%s/pulls?state=open", gitHubAPIBaseURL, spec.Owner, spec.Repo)
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Authorization", "Bearer "+token)
+	req.Header.Set("Accept", "application/vnd.github+json")
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close() //nolint:errcheck
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("github api returned %d", resp.StatusCode)
+	}
+
+	var pulls []struct {
+		Number             int    `json:"number"`
+		Title              string `json:"title"`
+		Body               string `json:"body"`
+		RequestedReviewers []struct {
+			Login string `json:"login"`
+		} `json:"requested_reviewers"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&pulls); err != nil {
+		return nil, err
+	}
+
+	var issues []Issue
+	for _, pr := range pulls {
+		for _, reviewer := range pr.RequestedReviewers {
+			if reviewer.Login == spec.Reviewer {
+				issues = append(issues, Issue{
+					Number: pr.Number,
+					Key:    fmt.Sprintf("#PR-%d", pr.Number),
+					Title:  pr.Title,
+					Body:   pr.Body,
+				})
+				break
+			}
 		}
 	}
 	return issues, nil
