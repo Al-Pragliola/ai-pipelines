@@ -31,6 +31,7 @@ import (
 
 var _ = Describe("Sample Pipeline with workflow", func() {
 	const samplePath = "../../config/samples/ai_v1alpha1_pipeline_workflow.yaml"
+	const bugfixWorkflowPath = "bugfix"
 
 	Context("Sample file exists and is valid YAML", func() {
 		It("should exist at config/samples/ai_v1alpha1_pipeline_workflow.yaml", func() {
@@ -81,7 +82,7 @@ var _ = Describe("Sample Pipeline with workflow", func() {
 		It("should reference the bugfix workflow path", func() {
 			var found bool
 			for _, step := range pipeline.Spec.Steps {
-				if step.Type == "ai" && step.WorkflowRef != nil && step.WorkflowRef.Path == "bugfix" {
+				if step.Type == "ai" && step.WorkflowRef != nil && step.WorkflowRef.Path == bugfixWorkflowPath {
 					found = true
 					break
 				}
@@ -91,7 +92,7 @@ var _ = Describe("Sample Pipeline with workflow", func() {
 
 		It("should have a short promptTemplate with issue context and /speedrun, not full methodology", func() {
 			for _, step := range pipeline.Spec.Steps {
-				if step.Type == "ai" && step.WorkflowRef != nil && step.WorkflowRef.Path == "bugfix" {
+				if step.Type == "ai" && step.WorkflowRef != nil && step.WorkflowRef.Path == bugfixWorkflowPath {
 					// The promptTemplate should be concise issue context, not a full methodology
 					Expect(step.PromptTemplate).NotTo(BeEmpty(), "promptTemplate must provide issue context")
 
@@ -145,7 +146,7 @@ var _ = Describe("Sample Pipeline with workflow", func() {
 			// Verify the workflowRef survived the round-trip
 			var workflowStep *aiv1alpha1.StepSpec
 			for i := range fetched.Spec.Steps {
-				if fetched.Spec.Steps[i].WorkflowRef != nil && fetched.Spec.Steps[i].WorkflowRef.Path == "bugfix" {
+				if fetched.Spec.Steps[i].WorkflowRef != nil && fetched.Spec.Steps[i].WorkflowRef.Path == bugfixWorkflowPath {
 					workflowStep = &fetched.Spec.Steps[i]
 					break
 				}
