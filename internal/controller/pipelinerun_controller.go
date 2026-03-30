@@ -875,10 +875,18 @@ echo "checked out branch %s (credentials stripped from remotes, ownership set to
 }
 
 func (r *PipelineRunReconciler) configureAIJob(_ context.Context, job *batchv1.Job, run *aiv1alpha1.PipelineRun, pipeline *aiv1alpha1.Pipeline, step *aiv1alpha1.StepSpec) error {
-	// Render the prompt template
-	prompt, err := renderPrompt(step.PromptTemplate, run, pipeline.Spec.Repos)
-	if err != nil {
-		return fmt.Errorf("rendering prompt: %w", err)
+	// Determine the prompt content
+	var prompt string
+	if step.PromptTemplate != "" {
+		// Render the provided prompt template
+		var err error
+		prompt, err = renderPrompt(step.PromptTemplate, run, pipeline.Spec.Repos)
+		if err != nil {
+			return fmt.Errorf("rendering prompt: %w", err)
+		}
+	} else if step.WorkflowRef != nil {
+		// Auto-generate a prompt from issue/description fields
+		prompt = generateAutoPrompt(run)
 	}
 
 	// Build env vars from pipeline AI config
@@ -1513,6 +1521,28 @@ func renderTemplate(steps []aiv1alpha1.StepSpec, run *aiv1alpha1.PipelineRun) (s
 
 func renderPrompt(promptTemplate string, run *aiv1alpha1.PipelineRun, repos []aiv1alpha1.RepoCandidate) (string, error) {
 	return renderString(promptTemplate, newTemplateData(run, repos))
+}
+
+func generateAutoPrompt(run *aiv1alpha1.PipelineRun) string {
+	var parts []string
+
+	if run.Spec.IssueNumber > 0 {
+		key := run.Spec.IssueKey
+		if key == "" {
+			key = fmt.Sprintf("#%d", run.Spec.IssueNumber)
+		}
+		parts = append(parts, fmt.Sprintf("Issue %s: %s", key, run.Spec.IssueTitle))
+	}
+
+	if run.Spec.IssueBody != "" {
+		parts = append(parts, run.Spec.IssueBody)
+	}
+
+	if run.Spec.Description != "" {
+		parts = append(parts, run.Spec.Description)
+	}
+
+	return strings.Join(parts, "\n\n")
 }
 
 func renderString(tmplStr string, data templateData) (string, error) {
