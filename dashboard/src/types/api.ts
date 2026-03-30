@@ -67,4 +67,6 @@ export interface StepStatus {
   jobName: string;
   attempt: number;
   message: string;
+  workflowRepo?: string;
+  workflowPath?: string;
 }

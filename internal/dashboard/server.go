@@ -167,6 +167,8 @@ type stepResponse struct {
 	JobName         string  `json:"jobName"`
 	Attempt         int     `json:"attempt"`
 	Message         string  `json:"message"`
+	WorkflowRepo    string  `json:"workflowRepo,omitempty"`
+	WorkflowPath    string  `json:"workflowPath,omitempty"`
 }
 
 // --- Handlers ---
@@ -1642,12 +1644,14 @@ func toRunResponse(run *aiv1alpha1.PipelineRun) runResponse {
 	}
 	for _, s := range run.Status.Steps {
 		sr := stepResponse{
-			Name:    s.Name,
-			Type:    s.Type,
-			Phase:   string(s.Phase),
-			JobName: s.JobName,
-			Attempt: s.Attempt,
-			Message: s.Message,
+			Name:         s.Name,
+			Type:         s.Type,
+			Phase:        string(s.Phase),
+			JobName:      s.JobName,
+			Attempt:      s.Attempt,
+			Message:      s.Message,
+			WorkflowRepo: s.WorkflowRepo,
+			WorkflowPath: s.WorkflowPath,
 		}
 		if s.StartedAt != nil {
 			t := s.StartedAt.Format(time.RFC3339)

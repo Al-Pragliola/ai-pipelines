@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef } from 'react'
+import { useEffect, useState, useRef, useCallback } from 'react'
 import { useParams, Link, useNavigate } from 'react-router-dom'
 import { PrismLight as SyntaxHighlighter } from 'react-syntax-highlighter'
 import { oneDark } from 'react-syntax-highlighter/dist/esm/styles/prism'
@@ -31,7 +31,7 @@ function StepCard({ step, namespace, runName }: { step: StepStatus; namespace: s
   const logRef = useRef<HTMLDivElement>(null)
   const wasAtBottom = useRef(true)
 
-  const doFetch = async () => {
+  const doFetch = useCallback(async () => {
     try {
       const res = await fetch(`/api/runs/${namespace}/${runName}/steps/${step.name}/logs`)
       if (!res.ok) throw new Error(await res.text())
@@ -46,7 +46,7 @@ function StepCard({ step, namespace, runName }: { step: StepStatus; namespace: s
     } catch {
       setLogs('Failed to load logs')
     }
-  }
+  }, [namespace, runName, step.name])
 
   const toggle = async () => {
     if (open) {
@@ -65,7 +65,7 @@ function StepCard({ step, namespace, runName }: { step: StepStatus; namespace: s
     if (!open || !ACTIVE_PHASES.has(step.phase)) return
     const id = setInterval(doFetch, 3_000)
     return () => clearInterval(id)
-  }, [open, step.phase, namespace, runName, step.name])
+  }, [open, step.phase, doFetch])
 
   return (
     <div className="bg-gray-900 border border-gray-800 rounded-lg overflow-hidden">
@@ -75,6 +75,12 @@ function StepCard({ step, namespace, runName }: { step: StepStatus; namespace: s
           <div>
             <span className="font-medium text-white">{step.name}</span>
             <span className="text-xs text-gray-500 ml-2">{step.type}</span>
+            {step.workflowRepo && (
+              <>
+                <span className="ml-2 text-xs px-1.5 py-0.5 rounded bg-purple-500/20 text-purple-300 border border-purple-500/30">workflow</span>
+                <span className="ml-2 text-xs text-gray-400">{step.workflowRepo} / {step.workflowPath}</span>
+              </>
+            )}
           </div>
         </div>
         <div className="flex items-center gap-4">
@@ -428,7 +434,7 @@ export default function RunDetail() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
 
-  const load = async () => {
+  const load = useCallback(async () => {
     try {
       const res = await fetch(`/api/runs/${namespace}/${name}`)
       if (!res.ok) throw new Error(await res.text())
@@ -438,7 +444,7 @@ export default function RunDetail() {
     } finally {
       setLoading(false)
     }
-  }
+  }, [namespace, name])
 
   useEffect(() => {
     load()
@@ -448,7 +454,7 @@ export default function RunDetail() {
     if (isStable) return
     const id = setInterval(load, 3_000)
     return () => clearInterval(id)
-  }, [namespace, name, run?.phase, run?.waitingFor])
+  }, [load, run?.phase, run?.waitingFor])
 
   if (loading) return <div className="text-gray-400 py-12">Loading run...</div>
   if (error) return <div className="text-red-400 py-12">{error}</div>

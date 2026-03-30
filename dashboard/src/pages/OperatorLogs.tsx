@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef } from 'react'
+import { useEffect, useState, useRef, useCallback } from 'react'
 
 export default function OperatorLogs() {
   const [logs, setLogs] = useState('')
@@ -8,7 +8,7 @@ export default function OperatorLogs() {
   const [autoRefresh, setAutoRefresh] = useState(true)
   const bottomRef = useRef<HTMLDivElement>(null)
 
-  const load = async () => {
+  const load = useCallback(async () => {
     try {
       const res = await fetch(`/api/operator/logs?lines=${lines}`)
       if (!res.ok) {
@@ -23,15 +23,15 @@ export default function OperatorLogs() {
     } finally {
       setLoading(false)
     }
-  }
+  }, [lines])
 
-  useEffect(() => { load() }, [lines])
+  useEffect(() => { load() }, [load])
 
   useEffect(() => {
     if (!autoRefresh) return
     const id = setInterval(load, 3000)
     return () => clearInterval(id)
-  }, [autoRefresh, lines])
+  }, [autoRefresh, load])
 
   useEffect(() => {
     if (autoRefresh && bottomRef.current) {

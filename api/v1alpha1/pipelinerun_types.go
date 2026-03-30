@@ -133,6 +133,14 @@ type StepStatus struct {
 	// message contains error details on failure.
 	// +optional
 	Message string `json:"message,omitempty"`
+
+	// workflowRepo is the workflow repository (owner/repo) used by this step.
+	// +optional
+	WorkflowRepo string `json:"workflowRepo,omitempty"`
+
+	// workflowPath is the path within the workflow repository.
+	// +optional
+	WorkflowPath string `json:"workflowPath,omitempty"`
 }
 
 // PipelineRunStatus defines the observed state of PipelineRun.

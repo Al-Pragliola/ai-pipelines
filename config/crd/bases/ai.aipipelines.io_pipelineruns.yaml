@@ -270,6 +270,13 @@ spec:
                       description: 'type is the step type: git-checkout, ai, shell,
                         git-push, triage.'
                       type: string
+                    workflowPath:
+                      description: workflowPath is the path within the workflow repository.
+                      type: string
+                    workflowRepo:
+                      description: workflowRepo is the workflow repository (owner/repo)
+                        used by this step.
+                      type: string
                   required:
                   - name
                   - phase
