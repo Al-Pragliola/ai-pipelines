@@ -251,6 +251,23 @@ spec:
                           description: repo is the GitHub repository in owner/repo
                             format.
                           type: string
+                        secretRef:
+                          description: |-
+                            secretRef references a K8s Secret containing the git token for cloning
+                            the workflow repo. If omitted, falls back to the pipeline's repo secretRef
+                            or the trigger's secretRef.
+                          properties:
+                            key:
+                              default: token
+                              description: key is the key within the Secret. Defaults
+                                to "token".
+                              type: string
+                            name:
+                              description: name is the name of the Secret.
+                              type: string
+                          required:
+                          - name
+                          type: object
                       required:
                       - path
                       - repo

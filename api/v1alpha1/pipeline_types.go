@@ -203,6 +203,12 @@ type WorkflowRef struct {
 	// ref is the git ref (branch, tag, commit). Defaults to HEAD.
 	// +optional
 	Ref string `json:"ref,omitempty"`
+
+	// secretRef references a K8s Secret containing the git token for cloning
+	// the workflow repo. If omitted, falls back to the pipeline's repo secretRef
+	// or the trigger's secretRef.
+	// +optional
+	SecretRef *SecretKeyRef `json:"secretRef,omitempty"`
 }
 
 // StepSpec defines a single pipeline step.

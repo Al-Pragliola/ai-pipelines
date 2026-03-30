@@ -1033,7 +1033,7 @@ if [ -f CLAUDE.md ] && [ ! -f %s/CLAUDE.md ]; then cp CLAUDE.md %s/; fi
 			workspacePath, workspacePath,
 			workspacePath, workspacePath)
 
-		secretRef := pipeline.Spec.Repo.SecretRef
+		secretRef := r.resolveWorkflowSecretRef(step, pipeline)
 		job.Spec.Template.Spec.InitContainers = append(job.Spec.Template.Spec.InitContainers, corev1.Container{
 			Name:    "workflow-clone",
 			Image:   gitImage,
@@ -1060,6 +1060,25 @@ if [ -f CLAUDE.md ] && [ ! -f %s/CLAUDE.md ]; then cp CLAUDE.md %s/; fi
 	}
 
 	return nil
+}
+
+// resolveWorkflowSecretRef determines which secret to use for cloning a workflow repo.
+// Priority: WorkflowRef.SecretRef > pipeline.Spec.Repo.SecretRef > trigger GitHub secretRef.
+func (r *PipelineRunReconciler) resolveWorkflowSecretRef(step *aiv1alpha1.StepSpec, pipeline *aiv1alpha1.Pipeline) aiv1alpha1.SecretKeyRef {
+	if step.WorkflowRef != nil && step.WorkflowRef.SecretRef != nil {
+		ref := *step.WorkflowRef.SecretRef
+		if ref.Key == "" {
+			ref.Key = defaultSecretKey
+		}
+		return ref
+	}
+	if pipeline.Spec.Repo != nil {
+		return pipeline.Spec.Repo.SecretRef
+	}
+	if pipeline.Spec.Trigger != nil && pipeline.Spec.Trigger.GitHub != nil {
+		return pipeline.Spec.Trigger.GitHub.SecretRef
+	}
+	return aiv1alpha1.SecretKeyRef{}
 }
 
 func (r *PipelineRunReconciler) configureShellJob(job *batchv1.Job, step *aiv1alpha1.StepSpec) {
