@@ -19,23 +19,9 @@ local_resource(
 
 # --- Pipeline CRs (local/ is gitignored — copy from config/samples/ and fill in your values) ---
 local_resource(
-    'sample-cr',
-    cmd='kubectl apply -f local/pipeline-github.yaml',
-    deps=['local/pipeline-github.yaml'],
-    resource_deps=['crd-install'],
-)
-
-local_resource(
-    'sample-cr-jira',
-    cmd='kubectl apply -f local/pipeline-jira.yaml',
-    deps=['local/pipeline-jira.yaml'],
-    resource_deps=['crd-install'],
-)
-
-local_resource(
-    'sample-cr-spot',
-    cmd='kubectl apply -f local/pipeline-spot.yaml',
-    deps=['local/pipeline-spot.yaml'],
+    'sample-crs',
+    cmd='kubectl apply -f local/',
+    deps=['local/'],
     resource_deps=['crd-install'],
 )
 
@@ -55,7 +41,7 @@ local_resource(
         'internal/issuehistory/',
         'api/v1alpha1/',
     ],
-    resource_deps=['crd-install', 'sample-cr', 'data-dir'],
+    resource_deps=['crd-install', 'sample-crs', 'data-dir'],
 )
 
 # --- Dashboard API ---
