@@ -22,6 +22,7 @@ A web dashboard provides real-time visibility into pipeline runs, step logs, tri
 - **TDD workflow** — write tests first, then implement, with retry loops
 - **Multi-repo triage** — AI selects the target repo based on ticket content
 - **Diff preview and approval** — review AI changes before they're pushed
+- **Ambient workflow integration** — reference reusable AI methodologies from GitHub repos instead of hand-crafting prompt templates
 - **Docker-in-Docker** — AI steps can build and run containers (for test suites that need it)
 - **Security hardening** — AI pods run as non-root, drop all capabilities, and have no access to git credentials
 
@@ -209,7 +210,69 @@ spec:
       requireApproval: true
 ```
 
-See `config/samples/` for complete examples including Jira triggers and multi-repo triage.
+See `config/samples/` for complete examples including Jira triggers, multi-repo triage, and ambient workflows.
+
+## Ambient Workflows
+
+Instead of writing inline `promptTemplate` strings for every AI step, you can reference a **workflow** — a directory in a GitHub repo that provides Claude with pre-built methodology, slash commands, skills, and agents.
+
+When a step has a `workflowRef`, the controller adds a `workflow-clone` init container that runs before the AI step. It clones the workflow repo and overlays these directories into the workspace (no-clobber — existing workspace files are never overwritten):
+
+| What gets copied | Where |
+|-----------------|-------|
+| `.claude/` (commands, skills, agents) | workspace root |
+| `.ambient/` | workspace root |
+| `CLAUDE.md` | workspace root (only if not already present) |
+
+Claude Code discovers these files automatically, so the workflow's methodology is active without any prompt engineering on your part.
+
+### `workflowRef` fields
+
+```yaml
+workflowRef:
+  repo: "ambient-code/workflows"   # GitHub repo in owner/repo format
+  path: "bugfix"                   # directory within that repo
+  ref: "main"                      # branch/tag/commit; defaults to HEAD
+  secretRef:                       # optional; for private workflow repos
+    name: github-token
+```
+
+**Credential resolution order** (first match wins):
+1. `workflowRef.secretRef`
+2. `spec.repo.secretRef`
+3. Trigger GitHub `secretRef`
+
+### `promptTemplate` changes meaning
+
+When `workflowRef` is set, `promptTemplate` is the **issue/task context** passed as the initial message to Claude — not methodology instructions. The workflow's `CLAUDE.md` and startup prompt handle methodology. If you omit `promptTemplate`, a default context is generated from the issue title and body.
+
+### Example
+
+```yaml
+steps:
+  - name: checkout
+    type: git-checkout
+    branchTemplate: "ai/{{.IssueNumber}}-{{.Timestamp}}"
+
+  - name: fix
+    type: ai
+    workflowRef:
+      repo: "ambient-code/workflows"
+      path: "bugfix"
+    promptTemplate: |
+      Issue #{{.IssueNumber}}: {{.IssueTitle}}
+
+      {{.IssueBody}}
+
+      You are on branch `{{.Branch}}`. Stay on this branch.
+      Run /speedrun to execute the bugfix workflow.
+
+  - name: push
+    type: git-push
+    requireApproval: true
+```
+
+See `config/samples/ai_v1alpha1_pipeline_workflow.yaml` for a complete working example.
 
 ## Deployment
 
