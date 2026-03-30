@@ -63,9 +63,15 @@ spec:
                   approvedStep is set by the dashboard to approve a step that has requireApproval.
                   The controller checks this against the current waiting step to resume.
                 type: string
+              baseBranch:
+                description: baseBranch is the base branch of the pull request.
+                type: string
               description:
                 description: description is the task description for spot runs (runs
                   without a trigger event).
+                type: string
+              headBranch:
+                description: headBranch is the head branch of the pull request.
                 type: string
               issueBody:
                 description: issueBody is the body/description of the triggering issue.
@@ -84,6 +90,14 @@ spec:
                 description: pipelineRef is the name of the Pipeline CR this run belongs
                   to.
                 type: string
+              prAuthor:
+                description: prAuthor is the author of the pull request that triggered
+                  this run.
+                type: string
+              prNumber:
+                description: prNumber is the pull request number that triggered this
+                  run.
+                type: integer
               selectedRepo:
                 description: |-
                   selectedRepo is the repo chosen by user when triage is not confident.

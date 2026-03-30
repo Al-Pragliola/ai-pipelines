@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
-import { type DiffFile, type DiffLine, type DiffHunk } from './diffUtils'
+import { parseDiff, type DiffFile, type DiffLine, type DiffHunk } from './diffUtils'
 
 export type { DiffFile, DiffLine, DiffHunk }
 
@@ -239,8 +239,8 @@ export default function DiffDialog({
   const diffPanelRef = useRef<HTMLDivElement>(null)
   const fileRefs = useRef<Map<string, HTMLDivElement>>(new Map())
 
-  const totalAdditions = files.reduce((s, f) => s + f.additions, 0)
-  const totalDeletions = files.reduce((s, f) => s + f.deletions, 0)
+  const totalAdditions = files.reduce((s: number, f: DiffFile) => s + f.additions, 0)
+  const totalDeletions = files.reduce((s: number, f: DiffFile) => s + f.deletions, 0)
   const tree = buildFileTree(files)
 
   const toggleCollapsed = useCallback((path: string) => {
@@ -322,7 +322,7 @@ export default function DiffDialog({
 
           {/* Diff view */}
           <div ref={diffPanelRef} className="flex-1 overflow-auto">
-            {files.map(file => (
+            {files.map((file: DiffFile) => (
               <div
                 key={file.path}
                 ref={el => { if (el) fileRefs.current.set(file.path, el) }}
