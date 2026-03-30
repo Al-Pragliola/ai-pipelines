@@ -190,6 +190,21 @@ type AISpec struct {
 	ImagePullPolicy corev1.PullPolicy `json:"imagePullPolicy,omitempty"`
 }
 
+// WorkflowRef points to a workflow in a GitHub repository.
+type WorkflowRef struct {
+	// repo is the GitHub repository in owner/repo format.
+	// +required
+	Repo string `json:"repo"`
+
+	// path is the directory within the repository containing the workflow.
+	// +required
+	Path string `json:"path"`
+
+	// ref is the git ref (branch, tag, commit). Defaults to HEAD.
+	// +optional
+	Ref string `json:"ref,omitempty"`
+}
+
 // StepSpec defines a single pipeline step.
 type StepSpec struct {
 	// name is the step identifier.
@@ -201,11 +216,17 @@ type StepSpec struct {
 	// +kubebuilder:validation:Enum=git-checkout;ai;shell;git-push;triage
 	Type string `json:"type"`
 
+	// workflowRef points to a workflow in a GitHub repo.
+	// When set, promptTemplate becomes the issue/task context passed as the initial user message.
+	// +optional
+	WorkflowRef *WorkflowRef `json:"workflowRef,omitempty"`
+
 	// branchTemplate is a Go template for the branch name (git-checkout only).
 	// +optional
 	BranchTemplate string `json:"branchTemplate,omitempty"`
 
 	// promptTemplate is a Go template for the AI prompt (ai and triage steps).
+	// When workflowRef is set, this serves as the issue/task context instead of methodology instructions.
 	// +optional
 	PromptTemplate string `json:"promptTemplate,omitempty"`
 

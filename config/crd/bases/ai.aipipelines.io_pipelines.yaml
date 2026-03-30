@@ -215,8 +215,9 @@ spec:
                       description: onFailure is the step name to jump back to on failure.
                       type: string
                     promptTemplate:
-                      description: promptTemplate is a Go template for the AI prompt
-                        (ai and triage steps).
+                      description: |-
+                        promptTemplate is a Go template for the AI prompt (ai and triage steps).
+                        When workflowRef is set, this serves as the issue/task context instead of methodology instructions.
                       type: string
                     requireApproval:
                       description: |-
@@ -233,6 +234,27 @@ spec:
                       - git-push
                       - triage
                       type: string
+                    workflowRef:
+                      description: |-
+                        workflowRef points to a workflow in a GitHub repo.
+                        When set, promptTemplate becomes the issue/task context passed as the initial user message.
+                      properties:
+                        path:
+                          description: path is the directory within the repository
+                            containing the workflow.
+                          type: string
+                        ref:
+                          description: ref is the git ref (branch, tag, commit). Defaults
+                            to HEAD.
+                          type: string
+                        repo:
+                          description: repo is the GitHub repository in owner/repo
+                            format.
+                          type: string
+                      required:
+                      - path
+                      - repo
+                      type: object
                   required:
                   - name
                   - type
