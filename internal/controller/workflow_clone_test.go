@@ -31,6 +31,8 @@ import (
 	aiv1alpha1 "github.com/Al-Pragliola/ai-pipelines/api/v1alpha1"
 )
 
+const githubTokenEnvVar = "GITHUB_TOKEN"
+
 var _ = Describe("Workflow clone init container", func() {
 	var (
 		reconciler *PipelineRunReconciler
@@ -165,13 +167,13 @@ var _ = Describe("Workflow clone init container", func() {
 			// It should have a GITHUB_TOKEN env var from the secret
 			var hasToken bool
 			for _, env := range wfInit.Env {
-				if env.Name == "GITHUB_TOKEN" && env.ValueFrom != nil && env.ValueFrom.SecretKeyRef != nil {
+				if env.Name == githubTokenEnvVar && env.ValueFrom != nil && env.ValueFrom.SecretKeyRef != nil {
 					hasToken = true
 					Expect(env.ValueFrom.SecretKeyRef.Name).To(Equal("github-token"))
 					break
 				}
 			}
-			Expect(hasToken).To(BeTrue(), "expected GITHUB_TOKEN env var from github-token secret")
+			Expect(hasToken).To(BeTrue(), "expected "+githubTokenEnvVar+" env var from github-token secret")
 
 			// It should mount the workspace volume
 			var mountsWorkspace bool
@@ -432,7 +434,7 @@ var _ = Describe("Workflow clone init container", func() {
 
 			var tokenEnv *corev1.EnvVar
 			for i := range wfInit.Env {
-				if wfInit.Env[i].Name == "GITHUB_TOKEN" {
+				if wfInit.Env[i].Name == githubTokenEnvVar {
 					tokenEnv = &wfInit.Env[i]
 					break
 				}
