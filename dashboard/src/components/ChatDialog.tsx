@@ -1,12 +1,8 @@
 import { useState, useRef, useEffect, useCallback, useMemo, memo } from 'react'
-import {
-  type StreamEntry,
-  tryParseLines,
-  ChatMessage,
-  ResultSummary,
-  MarkdownText,
-} from './StreamChat'
-import { parseDiff, FileDiff, type DiffFile } from './DiffDialog'
+import { type StreamEntry, tryParseLines } from './streamUtils'
+import { ChatMessage, ResultSummary, MarkdownText } from './StreamChat'
+import { parseDiff, type DiffFile } from './diffUtils'
+import { FileDiff } from './DiffDialog'
 
 interface ChatMsg {
   role: 'user' | 'assistant'

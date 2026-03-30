@@ -8,13 +8,8 @@ import json from 'react-syntax-highlighter/dist/esm/languages/prism/json'
 import python from 'react-syntax-highlighter/dist/esm/languages/prism/python'
 import diff from 'react-syntax-highlighter/dist/esm/languages/prism/diff'
 
-import {
-  type StreamEntry,
-  tryParseLines,
-  isStreamJson,
-  ChatMessage,
-  ResultSummary,
-} from './StreamChat'
+import { type StreamEntry, tryParseLines, isStreamJson } from './streamUtils'
+import { ChatMessage, ResultSummary } from './StreamChat'
 
 SyntaxHighlighter.registerLanguage('go', go)
 SyntaxHighlighter.registerLanguage('typescript', typescript)

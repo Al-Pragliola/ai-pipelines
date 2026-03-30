@@ -45,7 +45,7 @@ func TestToRunResponse_WorkflowFields(t *testing.T) {
 		t.Fatalf("failed to marshal step response: %v", err)
 	}
 
-	var raw map[string]interface{}
+	var raw map[string]any
 	if err := json.Unmarshal(data, &raw); err != nil {
 		t.Fatalf("failed to unmarshal step response: %v", err)
 	}
@@ -113,7 +113,7 @@ func TestStepResponseJSON_IncludesWorkflowFields(t *testing.T) {
 		t.Fatalf("failed to marshal: %v", err)
 	}
 
-	var raw map[string]interface{}
+	var raw map[string]any
 	if err := json.Unmarshal(data, &raw); err != nil {
 		t.Fatalf("failed to unmarshal: %v", err)
 	}
@@ -160,12 +160,12 @@ func TestRunResponseJSON_IncludesStepWorkflowInfo(t *testing.T) {
 		t.Fatalf("failed to marshal runResponse: %v", err)
 	}
 
-	var raw map[string]interface{}
+	var raw map[string]any
 	if err := json.Unmarshal(data, &raw); err != nil {
 		t.Fatalf("failed to unmarshal: %v", err)
 	}
 
-	steps, ok := raw["steps"].([]interface{})
+	steps, ok := raw["steps"].([]any)
 	if !ok {
 		t.Fatalf("expected steps to be an array")
 	}
@@ -173,7 +173,7 @@ func TestRunResponseJSON_IncludesStepWorkflowInfo(t *testing.T) {
 	// Both steps should have workflowRepo and workflowPath keys in JSON
 	// (even if empty/omitted for non-workflow steps)
 	for i, s := range steps {
-		stepMap, ok := s.(map[string]interface{})
+		stepMap, ok := s.(map[string]any)
 		if !ok {
 			t.Fatalf("step %d is not an object", i)
 		}
