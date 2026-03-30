@@ -55,6 +55,22 @@ type PipelineRunSpec struct {
 	// The controller checks this against the current waiting step to resume.
 	// +optional
 	ApprovedStep string `json:"approvedStep,omitempty"`
+
+	// prNumber is the pull request number that triggered this run.
+	// +optional
+	PRNumber int `json:"prNumber,omitempty"`
+
+	// prAuthor is the author of the pull request that triggered this run.
+	// +optional
+	PRAuthor string `json:"prAuthor,omitempty"`
+
+	// baseBranch is the base branch of the pull request.
+	// +optional
+	BaseBranch string `json:"baseBranch,omitempty"`
+
+	// headBranch is the head branch of the pull request.
+	// +optional
+	HeadBranch string `json:"headBranch,omitempty"`
 }
 
 // SelectedRepo identifies the repo selected for this run (by triage or user).
