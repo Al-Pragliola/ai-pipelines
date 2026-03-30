@@ -100,6 +100,35 @@ type TriggerSpec struct {
 	// jira configures Jira Issues polling.
 	// +optional
 	Jira *JiraTriggerSpec `json:"jira,omitempty"`
+
+	// githubPRReview configures GitHub PR review polling.
+	// +optional
+	GitHubPRReview *GitHubPRReviewTriggerSpec `json:"githubPRReview,omitempty"`
+}
+
+// GitHubPRReviewTriggerSpec configures GitHub PR review trigger.
+type GitHubPRReviewTriggerSpec struct {
+	// owner is the GitHub repository owner.
+	// +required
+	Owner string `json:"owner"`
+
+	// repo is the GitHub repository name.
+	// +required
+	Repo string `json:"repo"`
+
+	// reviewer filters PRs by this reviewer.
+	// +required
+	Reviewer string `json:"reviewer"`
+
+	// pollInterval is how often to check for new PR reviews (e.g. "30s", "5m").
+	// +optional
+	// +kubebuilder:default="30s"
+	PollInterval string `json:"pollInterval,omitempty"`
+
+	// secretRef references a K8s Secret containing the GitHub token.
+	// The secret must have a key named "token".
+	// +required
+	SecretRef SecretKeyRef `json:"secretRef"`
 }
 
 // GitHubTriggerSpec configures GitHub Issues trigger.
