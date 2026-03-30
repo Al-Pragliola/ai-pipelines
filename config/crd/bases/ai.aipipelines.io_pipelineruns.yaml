@@ -63,6 +63,10 @@ spec:
                   approvedStep is set by the dashboard to approve a step that has requireApproval.
                   The controller checks this against the current waiting step to resume.
                 type: string
+              description:
+                description: description is the task description for spot runs (runs
+                  without a trigger event).
+                type: string
               issueBody:
                 description: issueBody is the body/description of the triggering issue.
                 type: string
@@ -100,8 +104,6 @@ spec:
                 - owner
                 type: object
             required:
-            - issueNumber
-            - issueTitle
             - pipelineRef
             type: object
           status:

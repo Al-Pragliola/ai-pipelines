@@ -25,6 +25,7 @@ export interface PipelineRun {
   name: string;
   namespace: string;
   pipeline: string;
+  description?: string;
   issueNumber: number;
   issueKey: string;
   issueTitle: string;

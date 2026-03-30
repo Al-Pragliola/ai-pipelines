@@ -77,6 +77,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("PUT /api/pipelines/{namespace}/{name}", s.handleUpdatePipeline)
 	mux.HandleFunc("DELETE /api/pipelines/{namespace}/{name}", s.handleDeletePipeline)
 	mux.HandleFunc("GET /api/pipelines/{namespace}/{name}/runs", s.handleListRuns)
+	mux.HandleFunc("POST /api/pipelines/{namespace}/{name}/runs", s.handleCreateRun)
 	mux.HandleFunc("GET /api/pipelines/{namespace}/{name}/repos", s.handleListRepos)
 	mux.HandleFunc("GET /api/runs/{namespace}/{name}", s.handleGetRun)
 	mux.HandleFunc("GET /api/runs/{namespace}/{name}/steps/{step}/logs", s.handleGetLogs)
@@ -138,6 +139,7 @@ type runResponse struct {
 	Name            string                   `json:"name"`
 	Namespace       string                   `json:"namespace"`
 	Pipeline        string                   `json:"pipeline"`
+	Description     string                   `json:"description,omitempty"`
 	IssueNumber     int                      `json:"issueNumber"`
 	IssueKey        string                   `json:"issueKey"`
 	IssueTitle      string                   `json:"issueTitle"`
@@ -200,16 +202,21 @@ func (s *Server) handleListPipelines(w http.ResponseWriter, r *http.Request) {
 			ActiveRuns: counts[0],
 			TotalRuns:  counts[1],
 		}
-		switch {
-		case p.Spec.Trigger.GitHub != nil:
-			resp.TriggerType = "GitHub"
-			resp.TriggerInfo = fmt.Sprintf("%s/%s (assignee: %s)", p.Spec.Trigger.GitHub.Owner, p.Spec.Trigger.GitHub.Repo, p.Spec.Trigger.GitHub.Assignee)
-			resp.PollInterval = p.Spec.Trigger.GitHub.PollInterval
-		case p.Spec.Trigger.Jira != nil:
-			resp.TriggerType = "Jira"
-			resp.TriggerInfo = p.Spec.Trigger.Jira.URL
-			resp.TriggerJQL = p.Spec.Trigger.Jira.JQL
-			resp.PollInterval = p.Spec.Trigger.Jira.PollInterval
+		if p.Spec.Trigger == nil {
+			resp.TriggerType = "Spot"
+			resp.TriggerInfo = "Manual runs only"
+		} else {
+			switch {
+			case p.Spec.Trigger.GitHub != nil:
+				resp.TriggerType = "GitHub"
+				resp.TriggerInfo = fmt.Sprintf("%s/%s (assignee: %s)", p.Spec.Trigger.GitHub.Owner, p.Spec.Trigger.GitHub.Repo, p.Spec.Trigger.GitHub.Assignee)
+				resp.PollInterval = p.Spec.Trigger.GitHub.PollInterval
+			case p.Spec.Trigger.Jira != nil:
+				resp.TriggerType = "Jira"
+				resp.TriggerInfo = p.Spec.Trigger.Jira.URL
+				resp.TriggerJQL = p.Spec.Trigger.Jira.JQL
+				resp.PollInterval = p.Spec.Trigger.Jira.PollInterval
+			}
 		}
 		out = append(out, resp)
 	}
@@ -227,14 +234,26 @@ func (s *Server) handleGetPipeline(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	triggerType := "Spot"
+	if pipeline.Spec.Trigger != nil {
+		switch {
+		case pipeline.Spec.Trigger.GitHub != nil:
+			triggerType = "GitHub"
+		case pipeline.Spec.Trigger.Jira != nil:
+			triggerType = "Jira"
+		}
+	}
+
 	writeJSON(w, struct {
-		Name      string                  `json:"name"`
-		Namespace string                  `json:"namespace"`
-		Spec      aiv1alpha1.PipelineSpec `json:"spec"`
+		Name        string                  `json:"name"`
+		Namespace   string                  `json:"namespace"`
+		TriggerType string                  `json:"triggerType"`
+		Spec        aiv1alpha1.PipelineSpec `json:"spec"`
 	}{
-		Name:      pipeline.Name,
-		Namespace: pipeline.Namespace,
-		Spec:      pipeline.Spec,
+		Name:        pipeline.Name,
+		Namespace:   pipeline.Namespace,
+		TriggerType: triggerType,
+		Spec:        pipeline.Spec,
 	})
 }
 
@@ -383,6 +402,66 @@ func (s *Server) handleListRuns(w http.ResponseWriter, r *http.Request) {
 	})
 
 	writeJSON(w, out)
+}
+
+func (s *Server) handleCreateRun(w http.ResponseWriter, r *http.Request) {
+	namespace := r.PathValue("namespace")
+	name := r.PathValue("name")
+
+	var body struct {
+		Description string `json:"description"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		http.Error(w, fmt.Sprintf("invalid JSON: %v", err), http.StatusBadRequest)
+		return
+	}
+	if body.Description == "" {
+		http.Error(w, "description is required", http.StatusBadRequest)
+		return
+	}
+
+	var pipeline aiv1alpha1.Pipeline
+	if err := s.k8s.Get(r.Context(), client.ObjectKey{Namespace: namespace, Name: name}, &pipeline); err != nil {
+		http.Error(w, fmt.Sprintf("pipeline not found: %v", err), http.StatusNotFound)
+		return
+	}
+
+	if pipeline.Spec.Trigger != nil {
+		http.Error(w, "spot runs are only supported for pipelines without a trigger", http.StatusBadRequest)
+		return
+	}
+
+	run := &aiv1alpha1.PipelineRun{
+		ObjectMeta: metav1.ObjectMeta{
+			GenerateName: fmt.Sprintf("%s-spot-", name),
+			Namespace:    namespace,
+			Labels: map[string]string{
+				"ai.aipipelines.io/pipeline": name,
+				"ai.aipipelines.io/spot":     "true",
+			},
+		},
+		Spec: aiv1alpha1.PipelineRunSpec{
+			PipelineRef: name,
+			Description: body.Description,
+		},
+	}
+
+	if err := controllerutil.SetControllerReference(&pipeline, run, s.k8s.Scheme()); err != nil {
+		http.Error(w, fmt.Sprintf("failed to set owner reference: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	if err := s.k8s.Create(r.Context(), run); err != nil {
+		http.Error(w, fmt.Sprintf("failed to create run: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	w.WriteHeader(http.StatusCreated)
+	writeJSON(w, map[string]string{
+		"status":    "created",
+		"name":      run.Name,
+		"namespace": run.Namespace,
+	})
 }
 
 func (s *Server) handleGetRun(w http.ResponseWriter, r *http.Request) {
@@ -721,6 +800,12 @@ func (s *Server) handlePendingIssues(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// No trigger — spot-run-only pipeline
+	if pipeline.Spec.Trigger == nil {
+		writeJSON(w, []struct{}{})
+		return
+	}
+
 	// Read trigger credentials
 	var secretRef aiv1alpha1.SecretKeyRef
 	switch {
@@ -818,24 +903,40 @@ func (s *Server) handleRetryRun(w http.ResponseWriter, r *http.Request) {
 	// Clear history entry so the new run can complete normally
 	if s.history != nil {
 		issueKey := run.Spec.IssueKey
-		if issueKey == "" {
+		if issueKey == "" && run.Spec.IssueNumber > 0 {
 			issueKey = fmt.Sprintf("#%d", run.Spec.IssueNumber)
+		}
+		if issueKey == "" {
+			issueKey = "spot:" + run.Name
 		}
 		_ = s.history.Delete(r.Context(), namespace, run.Spec.PipelineRef, issueKey)
 	}
 
 	// Create new PipelineRun with same spec but fresh metadata
+	labels := map[string]string{
+		"ai.aipipelines.io/pipeline": run.Spec.PipelineRef,
+	}
+	if run.Spec.IssueKey != "" {
+		labels["ai.aipipelines.io/issue-key"] = sanitizeLabelValue(run.Spec.IssueKey)
+	}
+	if run.Spec.Description != "" {
+		labels["ai.aipipelines.io/spot"] = "true"
+	}
+
+	genName := fmt.Sprintf("%s-", run.Spec.PipelineRef)
+	if run.Spec.Description != "" {
+		genName = fmt.Sprintf("%s-spot-", run.Spec.PipelineRef)
+	}
+
 	newRun := &aiv1alpha1.PipelineRun{
 		ObjectMeta: metav1.ObjectMeta{
-			GenerateName: fmt.Sprintf("%s-", run.Spec.PipelineRef),
+			GenerateName: genName,
 			Namespace:    namespace,
-			Labels: map[string]string{
-				"ai.aipipelines.io/pipeline":  run.Spec.PipelineRef,
-				"ai.aipipelines.io/issue-key": sanitizeLabelValue(run.Spec.IssueKey),
-			},
+			Labels:       labels,
 		},
 		Spec: aiv1alpha1.PipelineRunSpec{
 			PipelineRef: run.Spec.PipelineRef,
+			Description: run.Spec.Description,
 			IssueNumber: run.Spec.IssueNumber,
 			IssueKey:    run.Spec.IssueKey,
 			IssueTitle:  run.Spec.IssueTitle,
@@ -906,8 +1007,11 @@ func (s *Server) handleStopRun(w http.ResponseWriter, r *http.Request) {
 	// Record in history
 	if s.history != nil {
 		issueKey := run.Spec.IssueKey
-		if issueKey == "" {
+		if issueKey == "" && run.Spec.IssueNumber > 0 {
 			issueKey = fmt.Sprintf("#%d", run.Spec.IssueNumber)
+		}
+		if issueKey == "" {
+			issueKey = "spot:" + run.Name
 		}
 		completedAt := now.Time
 		_ = s.history.MarkCompleted(r.Context(), issuehistory.Record{
@@ -1508,6 +1612,7 @@ func toRunResponse(run *aiv1alpha1.PipelineRun) runResponse {
 		Name:         run.Name,
 		Namespace:    run.Namespace,
 		Pipeline:     run.Spec.PipelineRef,
+		Description:  run.Spec.Description,
 		IssueNumber:  run.Spec.IssueNumber,
 		IssueKey:     run.Spec.IssueKey,
 		IssueTitle:   run.Spec.IssueTitle,

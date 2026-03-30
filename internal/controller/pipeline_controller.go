@@ -68,7 +68,19 @@ func (r *PipelineReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 		return ctrl.Result{}, err
 	}
 
-	trig := pipeline.Spec.Trigger
+	// No trigger configured — pipeline only supports spot runs
+	if pipeline.Spec.Trigger == nil {
+		r.stopPoller(req.NamespacedName)
+		pipeline.Status.PollerActive = false
+		if err := r.Status().Update(ctx, &pipeline); err != nil {
+			if apierrors.IsConflict(err) {
+				return ctrl.Result{Requeue: true}, nil
+			}
+		}
+		return ctrl.Result{}, nil
+	}
+
+	trig := *pipeline.Spec.Trigger
 
 	// Read trigger credentials from Secret
 	var secretRef aiv1alpha1.SecretKeyRef

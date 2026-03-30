@@ -557,8 +557,11 @@ func (r *PipelineRunReconciler) recordCompletion(ctx context.Context, run *aiv1a
 		return
 	}
 	issueKey := run.Spec.IssueKey
-	if issueKey == "" {
+	if issueKey == "" && run.Spec.IssueNumber > 0 {
 		issueKey = fmt.Sprintf("#%d", run.Spec.IssueNumber)
+	}
+	if issueKey == "" {
+		issueKey = "spot:" + run.Name
 	}
 	completedAt := time.Now()
 	if run.Status.FinishedAt != nil {
@@ -1125,8 +1128,19 @@ func (r *PipelineRunReconciler) configurePushJob(_ context.Context, job *batchv1
 	branch := run.Status.Branch
 
 	issueRef := run.Spec.IssueKey
-	if issueRef == "" {
+	if issueRef == "" && run.Spec.IssueNumber > 0 {
 		issueRef = fmt.Sprintf("#%d", run.Spec.IssueNumber)
+	}
+
+	var commitMsg string
+	if issueRef != "" {
+		commitMsg = fmt.Sprintf("ai: implement issue %s - %s", issueRef, run.Spec.IssueTitle)
+	} else {
+		desc := run.Spec.Description
+		if len(desc) > 72 {
+			desc = desc[:72]
+		}
+		commitMsg = fmt.Sprintf("ai: %s", desc)
 	}
 
 	// Re-inject credentials into the fork remote (stripped during checkout),
@@ -1149,13 +1163,13 @@ if git diff --cached --quiet; then
   echo "no changes to commit"
   exit 0
 fi
-git commit -m 'ai: implement issue %s - %s'
+git commit -m '%s'
 git push -u fork %s
 echo "pushed branch %s to fork"`,
 		workspacePath, workspacePath,
 		forkOwner, repo.Name,
 		branch, branch,
-		issueRef, run.Spec.IssueTitle,
+		commitMsg,
 		branch, branch)
 
 	job.Spec.Template.Spec.Containers = []corev1.Container{
@@ -1399,6 +1413,7 @@ type templateData struct {
 	IssueKey       string
 	IssueTitle     string
 	IssueBody      string
+	Description    string
 	Branch         string
 	Timestamp      string
 	RepoCandidates []repoCandidateData
@@ -1418,6 +1433,7 @@ func newTemplateData(run *aiv1alpha1.PipelineRun, repos []aiv1alpha1.RepoCandida
 		IssueKey:    run.Spec.IssueKey,
 		IssueTitle:  run.Spec.IssueTitle,
 		IssueBody:   run.Spec.IssueBody,
+		Description: run.Spec.Description,
 		Branch:      run.Status.Branch,
 		Timestamp:   run.CreationTimestamp.Format("20060102T1504"),
 	}

@@ -108,7 +108,11 @@ export default function PipelineList() {
                   <div>
                     <h2 className="text-lg font-medium text-white">{p.name}</h2>
                     <p className="text-sm text-gray-400 mt-1">
-                      <span className="text-gray-500">{p.triggerType}:</span> {p.triggerInfo}
+                      {p.triggerType === 'Spot' ? (
+                        <span className="text-gray-500">{p.triggerInfo}</span>
+                      ) : (
+                        <><span className="text-gray-500">{p.triggerType}:</span> {p.triggerInfo}</>
+                      )}
                     </p>
                     {p.triggerJql && (
                       <p className="mt-1.5 text-xs text-gray-500 font-mono bg-gray-800/50 rounded px-2 py-1 inline-block max-w-xl truncate" title={p.triggerJql}>
@@ -152,7 +156,11 @@ export default function PipelineList() {
                             </Link>
                           </td>
                           <td className="px-3 py-2.5 text-gray-400">
-                            {r.issueKey || `#${r.issueNumber}`} <span className="text-gray-500 truncate max-w-48 inline-block align-bottom">{r.issueTitle}</span>
+                            {r.issueKey || r.issueNumber ? (
+                              <>{r.issueKey || `#${r.issueNumber}`} <span className="text-gray-500 truncate max-w-48 inline-block align-bottom">{r.issueTitle}</span></>
+                            ) : (
+                              <span className="text-gray-500 truncate max-w-48 inline-block align-bottom">{r.description || 'Spot run'}</span>
+                            )}
                           </td>
                           <td className="px-3 py-2.5"><StatusBadge status={r.phase} /></td>
                           <td className="px-3 py-2.5 text-gray-500 text-xs">{r.currentStep || '—'}</td>

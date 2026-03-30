@@ -454,7 +454,8 @@ export default function RunDetail() {
   if (error) return <div className="text-red-400 py-12">{error}</div>
   if (!run) return null
 
-  const issueRef = run.issueKey || `#${run.issueNumber}`
+  const issueRef = run.issueKey || (run.issueNumber ? `#${run.issueNumber}` : '')
+  const isSpotRun = !issueRef
   const isTerminal = run.phase === 'Succeeded' || run.phase === 'Failed' || run.phase === 'Stopped' || run.phase === 'Deleting'
 
   return (
@@ -478,8 +479,17 @@ export default function RunDetail() {
 
       <div className="flex flex-wrap gap-6 mb-6 text-sm text-gray-400">
         <div>
-          <span className="text-gray-500">Issue:</span>{' '}
-          <span className="text-gray-200">{issueRef} {run.issueTitle}</span>
+          {isSpotRun ? (
+            <>
+              <span className="text-gray-500">Task:</span>{' '}
+              <span className="text-gray-200">{run.description || 'Spot run'}</span>
+            </>
+          ) : (
+            <>
+              <span className="text-gray-500">Issue:</span>{' '}
+              <span className="text-gray-200">{issueRef} {run.issueTitle}</span>
+            </>
+          )}
         </div>
         {run.resolvedRepo && (
           <div>

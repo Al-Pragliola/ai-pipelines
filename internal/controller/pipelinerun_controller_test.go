@@ -77,8 +77,54 @@ var _ = Describe("PipelineRun Controller", func() {
 				NamespacedName: typeNamespacedName,
 			})
 			Expect(err).NotTo(HaveOccurred())
-			// TODO(user): Add more specific assertions depending on your controller's reconciliation logic.
-			// Example: If you expect a certain status condition after reconciliation, verify it here.
+		})
+	})
+
+	Context("When reconciling a spot run", func() {
+		const spotRunName = "test-spot-run"
+
+		ctx := context.Background()
+
+		spotKey := types.NamespacedName{
+			Name:      spotRunName,
+			Namespace: "default",
+		}
+
+		BeforeEach(func() {
+			resource := &aiv1alpha1.PipelineRun{}
+			err := k8sClient.Get(ctx, spotKey, resource)
+			if err != nil && errors.IsNotFound(err) {
+				resource = &aiv1alpha1.PipelineRun{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      spotRunName,
+						Namespace: "default",
+						Labels: map[string]string{
+							"ai.aipipelines.io/spot": "true",
+						},
+					},
+					Spec: aiv1alpha1.PipelineRunSpec{
+						PipelineRef: "test-pipeline",
+						Description: "Fix the login bug on the settings page",
+					},
+				}
+				Expect(k8sClient.Create(ctx, resource)).To(Succeed())
+			}
+		})
+
+		AfterEach(func() {
+			resource := &aiv1alpha1.PipelineRun{}
+			err := k8sClient.Get(ctx, spotKey, resource)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(k8sClient.Delete(ctx, resource)).To(Succeed())
+		})
+
+		It("should create a spot run without issue fields", func() {
+			var run aiv1alpha1.PipelineRun
+			Expect(k8sClient.Get(ctx, spotKey, &run)).To(Succeed())
+			Expect(run.Spec.Description).To(Equal("Fix the login bug on the settings page"))
+			Expect(run.Spec.IssueNumber).To(Equal(0))
+			Expect(run.Spec.IssueKey).To(BeEmpty())
+			Expect(run.Spec.IssueTitle).To(BeEmpty())
 		})
 	})
 })
