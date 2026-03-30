@@ -34,8 +34,9 @@ type PipelineSpec struct {
 	Repos []RepoCandidate `json:"repos,omitempty"`
 
 	// trigger configures how new pipeline runs are created.
-	// +required
-	Trigger TriggerSpec `json:"trigger"`
+	// If omitted, the pipeline only supports spot runs (manual creation).
+	// +optional
+	Trigger *TriggerSpec `json:"trigger,omitempty"`
 
 	// ai configures the AI runtime (container image, env, secrets).
 	// +required

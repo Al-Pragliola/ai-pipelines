@@ -289,7 +289,11 @@ func (in *PipelineSpec) DeepCopyInto(out *PipelineSpec) {
 			(*in)[i].DeepCopyInto(&(*out)[i])
 		}
 	}
-	in.Trigger.DeepCopyInto(&out.Trigger)
+	if in.Trigger != nil {
+		in, out := &in.Trigger, &out.Trigger
+		*out = new(TriggerSpec)
+		(*in).DeepCopyInto(*out)
+	}
 	in.AI.DeepCopyInto(&out.AI)
 	if in.Steps != nil {
 		in, out := &in.Steps, &out.Steps

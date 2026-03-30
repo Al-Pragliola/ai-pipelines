@@ -52,7 +52,7 @@ var _ = Describe("Pipeline Controller", func() {
 						Namespace: "default",
 					},
 					Spec: aiv1alpha1.PipelineSpec{
-						Trigger: aiv1alpha1.TriggerSpec{
+						Trigger: &aiv1alpha1.TriggerSpec{
 							GitHub: &aiv1alpha1.GitHubTriggerSpec{
 								Owner:    "test-owner",
 								Repo:     "test-repo",
@@ -97,8 +97,68 @@ var _ = Describe("Pipeline Controller", func() {
 				NamespacedName: typeNamespacedName,
 			})
 			Expect(err).NotTo(HaveOccurred())
-			// TODO(user): Add more specific assertions depending on your controller's reconciliation logic.
-			// Example: If you expect a certain status condition after reconciliation, verify it here.
+		})
+	})
+
+	Context("When reconciling a spot (triggerless) pipeline", func() {
+		const spotName = "test-spot-pipeline"
+
+		ctx := context.Background()
+
+		spotKey := types.NamespacedName{
+			Name:      spotName,
+			Namespace: "default",
+		}
+
+		BeforeEach(func() {
+			resource := &aiv1alpha1.Pipeline{}
+			err := k8sClient.Get(ctx, spotKey, resource)
+			if err != nil && errors.IsNotFound(err) {
+				resource = &aiv1alpha1.Pipeline{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      spotName,
+						Namespace: "default",
+					},
+					Spec: aiv1alpha1.PipelineSpec{
+						// No Trigger — spot-run-only pipeline
+						AI: aiv1alpha1.AISpec{
+							Image: "test-image:latest",
+						},
+						Steps: []aiv1alpha1.StepSpec{
+							{
+								Name: "checkout",
+								Type: "git-checkout",
+							},
+						},
+					},
+				}
+				Expect(k8sClient.Create(ctx, resource)).To(Succeed())
+			}
+		})
+
+		AfterEach(func() {
+			resource := &aiv1alpha1.Pipeline{}
+			err := k8sClient.Get(ctx, spotKey, resource)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(k8sClient.Delete(ctx, resource)).To(Succeed())
+		})
+
+		It("should reconcile without starting a poller", func() {
+			controllerReconciler := &PipelineReconciler{
+				Client: k8sClient,
+				Scheme: k8sClient.Scheme(),
+			}
+
+			result, err := controllerReconciler.Reconcile(ctx, reconcile.Request{
+				NamespacedName: spotKey,
+			})
+			Expect(err).NotTo(HaveOccurred())
+			Expect(result).To(Equal(reconcile.Result{}))
+
+			// Verify no poller was started
+			var updated aiv1alpha1.Pipeline
+			Expect(k8sClient.Get(ctx, spotKey, &updated)).To(Succeed())
+			Expect(updated.Status.PollerActive).To(BeFalse())
 		})
 	})
 })

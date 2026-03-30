@@ -26,17 +26,21 @@ type PipelineRunSpec struct {
 	// +required
 	PipelineRef string `json:"pipelineRef"`
 
+	// description is the task description for spot runs (runs without a trigger event).
+	// +optional
+	Description string `json:"description,omitempty"`
+
 	// issueNumber is the issue number that triggered this run.
-	// +required
-	IssueNumber int `json:"issueNumber"`
+	// +optional
+	IssueNumber int `json:"issueNumber,omitempty"`
 
 	// issueKey is the issue identifier (e.g. "PROJ-123" for Jira, "#1" for GitHub).
 	// +optional
 	IssueKey string `json:"issueKey,omitempty"`
 
 	// issueTitle is the title/summary of the triggering issue.
-	// +required
-	IssueTitle string `json:"issueTitle"`
+	// +optional
+	IssueTitle string `json:"issueTitle,omitempty"`
 
 	// issueBody is the body/description of the triggering issue.
 	// +optional

@@ -240,7 +240,9 @@ spec:
                 minItems: 1
                 type: array
               trigger:
-                description: trigger configures how new pipeline runs are created.
+                description: |-
+                  trigger configures how new pipeline runs are created.
+                  If omitted, the pipeline only supports spot runs (manual creation).
                 properties:
                   github:
                     description: github configures GitHub Issues polling.
@@ -330,7 +332,6 @@ spec:
             required:
             - ai
             - steps
-            - trigger
             type: object
           status:
             description: PipelineStatus defines the observed state of Pipeline.
