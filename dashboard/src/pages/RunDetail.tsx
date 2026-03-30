@@ -75,6 +75,12 @@ function StepCard({ step, namespace, runName }: { step: StepStatus; namespace: s
           <div>
             <span className="font-medium text-white">{step.name}</span>
             <span className="text-xs text-gray-500 ml-2">{step.type}</span>
+            {step.workflowRepo && (
+              <>
+                <span className="ml-2 text-xs px-1.5 py-0.5 rounded bg-purple-500/20 text-purple-300 border border-purple-500/30">workflow</span>
+                <span className="ml-2 text-xs text-gray-400">{step.workflowRepo} / {step.workflowPath}</span>
+              </>
+            )}
           </div>
         </div>
         <div className="flex items-center gap-4">

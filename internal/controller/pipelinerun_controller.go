@@ -168,11 +168,16 @@ func (r *PipelineRunReconciler) reconcilePending(ctx context.Context, run *aiv1a
 	// Initialize step statuses
 	run.Status.Steps = make([]aiv1alpha1.StepStatus, len(pipeline.Spec.Steps))
 	for i, s := range pipeline.Spec.Steps {
-		run.Status.Steps[i] = aiv1alpha1.StepStatus{
+		stepStatus := aiv1alpha1.StepStatus{
 			Name:  s.Name,
 			Type:  s.Type,
 			Phase: aiv1alpha1.PipelineRunPhasePending,
 		}
+		if s.WorkflowRef != nil {
+			stepStatus.WorkflowRepo = s.WorkflowRef.Repo
+			stepStatus.WorkflowPath = s.WorkflowRef.Path
+		}
+		run.Status.Steps[i] = stepStatus
 	}
 
 	if err := r.Status().Update(ctx, run); err != nil {

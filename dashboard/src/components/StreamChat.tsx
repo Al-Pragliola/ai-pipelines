@@ -14,6 +14,8 @@ export interface StreamEntry {
   total_cost_usd?: number
   num_turns?: number
   duration_ms?: number
+  content?: string
+  artifacts?: string[]
 }
 
 export interface ContentBlock {

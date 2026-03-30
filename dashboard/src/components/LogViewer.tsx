@@ -51,6 +51,9 @@ export default function LogViewer({ logs, isActive = false }: { logs: string; is
   const entries: StreamEntry[] = tryParseLines(logs)
 
   const hasResult = entries.some(e => e.type === 'result')
+  const artifacts = entries
+    .filter(e => e.type === 'result' && e.artifacts && e.artifacts.length > 0)
+    .flatMap(e => e.artifacts!)
 
   return (
     <div className="space-y-4">
@@ -66,6 +69,16 @@ export default function LogViewer({ logs, isActive = false }: { logs: string; is
         <div className="flex items-center gap-3 px-3 py-2">
           <div className="w-7 h-7 rounded-full bg-purple-500/20 text-purple-400 flex items-center justify-center text-xs font-bold animate-pulse">AI</div>
           <div className="text-sm text-gray-400 animate-pulse">Thinking...</div>
+        </div>
+      )}
+      {artifacts.length > 0 && (
+        <div className="border-t border-gray-800 pt-3">
+          <div className="text-xs font-medium text-gray-400 mb-2">Artifacts</div>
+          <div className="space-y-1">
+            {artifacts.map((file, i) => (
+              <div key={i} className="text-xs text-gray-300 font-mono pl-2">{file}</div>
+            ))}
+          </div>
         </div>
       )}
     </div>
