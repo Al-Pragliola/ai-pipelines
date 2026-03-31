@@ -18,6 +18,9 @@ spec:
     imagePullPolicy: Never
 
   steps:
+    - name: checkout-pr
+      type: git-checkout-pr
+
     - name: review
       type: ai
       promptTemplate: |
