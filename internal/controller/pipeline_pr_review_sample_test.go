@@ -81,6 +81,34 @@ var _ = Describe("Sample Pipeline for PR review", func() {
 		})
 	})
 
+	Context("Pipeline has a git-checkout-pr step", func() {
+		var pipeline aiv1alpha1.Pipeline
+
+		BeforeEach(func() {
+			data, err := os.ReadFile(samplePath)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(yaml.UnmarshalStrict(data, &pipeline)).To(Succeed())
+		})
+
+		It("should have a git-checkout-pr step before the ai step", func() {
+			var checkoutPRIdx, aiIdx int
+			checkoutPRIdx = -1
+			aiIdx = -1
+			for i, step := range pipeline.Spec.Steps {
+				if step.Type == "git-checkout-pr" {
+					checkoutPRIdx = i
+				}
+				if step.Type == "ai" && aiIdx == -1 {
+					aiIdx = i
+				}
+			}
+			Expect(checkoutPRIdx).NotTo(Equal(-1), "sample must have a git-checkout-pr step")
+			Expect(aiIdx).NotTo(Equal(-1), "sample must have an ai step")
+			Expect(checkoutPRIdx).To(BeNumerically("<", aiIdx),
+				"git-checkout-pr step should come before the ai step")
+		})
+	})
+
 	Context("Pipeline prompt template references PRDiff and writes review.md", func() {
 		var pipeline aiv1alpha1.Pipeline
 

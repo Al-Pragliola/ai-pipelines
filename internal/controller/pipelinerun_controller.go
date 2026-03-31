@@ -236,7 +236,7 @@ func (r *PipelineRunReconciler) reconcileRunning(ctx context.Context, run *aiv1a
 		// Create the Job
 		log.Info("creating job for step", "step", stepSpec.Name, "attempt", attempt)
 
-		job, err := r.buildJob(ctx, run, pipeline, stepSpec, jobName, attempt)
+		job, err := r.buildJob(ctx, run, pipeline, stepSpec, attempt)
 		if err != nil {
 			log.Error(err, "failed to build job spec", "step", stepSpec.Name)
 			return r.failRun(ctx, run, fmt.Sprintf("failed to build job for step %q: %v", stepSpec.Name, err))
@@ -750,7 +750,8 @@ func (r *PipelineRunReconciler) ensurePVC(ctx context.Context, run *aiv1alpha1.P
 	return r.Create(ctx, pvc)
 }
 
-func (r *PipelineRunReconciler) buildJob(ctx context.Context, run *aiv1alpha1.PipelineRun, pipeline *aiv1alpha1.Pipeline, step *aiv1alpha1.StepSpec, jobName string, _ int) (*batchv1.Job, error) {
+func (r *PipelineRunReconciler) buildJob(ctx context.Context, run *aiv1alpha1.PipelineRun, pipeline *aiv1alpha1.Pipeline, step *aiv1alpha1.StepSpec, attempt int) (*batchv1.Job, error) {
+	jobName := fmt.Sprintf("%s-%s-%d", run.Name, step.Name, attempt)
 	var backoffLimit int32 = 0
 
 	job := &batchv1.Job{
@@ -803,6 +804,10 @@ func (r *PipelineRunReconciler) buildJob(ctx context.Context, run *aiv1alpha1.Pi
 		}
 	case "triage":
 		if err := r.configureTriageJob(ctx, job, run, pipeline, step); err != nil {
+			return nil, err
+		}
+	case "git-checkout-pr":
+		if err := r.configureCheckoutPRJob(ctx, job, run, pipeline, step); err != nil {
 			return nil, err
 		}
 	}
@@ -869,6 +874,61 @@ echo "checked out branch %s (credentials stripped from remotes, ownership set to
 								Name: repo.SecretRef.Name,
 							},
 							Key: secretKey(repo.SecretRef),
+						},
+					},
+				},
+			},
+		},
+	}
+
+	return nil
+}
+
+func (r *PipelineRunReconciler) configureCheckoutPRJob(_ context.Context, job *batchv1.Job, run *aiv1alpha1.PipelineRun, pipeline *aiv1alpha1.Pipeline, step *aiv1alpha1.StepSpec) error {
+	if pipeline.Spec.Trigger == nil || pipeline.Spec.Trigger.GitHubPRReview == nil {
+		return fmt.Errorf("git-checkout-pr requires a githubPRReview trigger on the pipeline")
+	}
+	if run.Spec.PRNumber == 0 {
+		return fmt.Errorf("git-checkout-pr requires a non-zero PRNumber on the PipelineRun")
+	}
+
+	trigger := pipeline.Spec.Trigger.GitHubPRReview
+
+	script := fmt.Sprintf(`set -e
+rm -rf %s/* %s/.[!.]*
+git clone https://x-access-token:${GITHUB_TOKEN}@github.com/%s/%s.git %s
+cd %s
+git fetch origin refs/pull/%d/head
+git checkout FETCH_HEAD
+git remote set-url origin https://github.com/%s/%s.git
+chown -R 1000:1000 %s
+echo "checked out PR #%d head (credentials stripped)"`,
+		workspacePath, workspacePath,
+		trigger.Owner, trigger.Repo, workspacePath,
+		workspacePath,
+		run.Spec.PRNumber,
+		trigger.Owner, trigger.Repo,
+		workspacePath,
+		run.Spec.PRNumber)
+
+	job.Spec.Template.Spec.Containers = []corev1.Container{
+		{
+			Name:    step.Name,
+			Image:   gitImage,
+			Command: []string{"/bin/sh", "-c"},
+			Args:    []string{script},
+			VolumeMounts: []corev1.VolumeMount{
+				{Name: "workspace", MountPath: workspacePath},
+			},
+			Env: []corev1.EnvVar{
+				{
+					Name: "GITHUB_TOKEN",
+					ValueFrom: &corev1.EnvVarSource{
+						SecretKeyRef: &corev1.SecretKeySelector{
+							LocalObjectReference: corev1.LocalObjectReference{
+								Name: trigger.SecretRef.Name,
+							},
+							Key: secretKey(trigger.SecretRef),
 						},
 					},
 				},

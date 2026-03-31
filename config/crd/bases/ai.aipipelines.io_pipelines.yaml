@@ -233,6 +233,7 @@ spec:
                       - shell
                       - git-push
                       - triage
+                      - git-checkout-pr
                       type: string
                     workflowRef:
                       description: |-

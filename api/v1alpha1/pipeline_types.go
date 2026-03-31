@@ -248,7 +248,7 @@ type StepSpec struct {
 
 	// type is the step type.
 	// +required
-	// +kubebuilder:validation:Enum=git-checkout;ai;shell;git-push;triage
+	// +kubebuilder:validation:Enum=git-checkout;ai;shell;git-push;triage;git-checkout-pr
 	Type string `json:"type"`
 
 	// workflowRef points to a workflow in a GitHub repo.
