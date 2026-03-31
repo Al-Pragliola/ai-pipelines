@@ -109,6 +109,37 @@ var _ = Describe("Sample Pipeline for PR review", func() {
 		})
 	})
 
+	Context("Pipeline has a watch-report step after the ai step", func() {
+		var pipeline aiv1alpha1.Pipeline
+
+		BeforeEach(func() {
+			data, err := os.ReadFile(samplePath)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(yaml.UnmarshalStrict(data, &pipeline)).To(Succeed())
+		})
+
+		It("should have a watch-report step that references review.md", func() {
+			var found bool
+			var aiIdx, reportIdx int
+			aiIdx = -1
+			reportIdx = -1
+			for i, step := range pipeline.Spec.Steps {
+				if step.Type == "ai" && aiIdx == -1 {
+					aiIdx = i
+				}
+				if step.Type == "watch-report" {
+					reportIdx = i
+					Expect(step.ReportFile).To(Equal("/workspace/review.md"),
+						"watch-report step must reference /workspace/review.md")
+					found = true
+				}
+			}
+			Expect(found).To(BeTrue(), "sample must have a watch-report step")
+			Expect(reportIdx).To(BeNumerically(">", aiIdx),
+				"watch-report step should come after the ai step")
+		})
+	})
+
 	Context("Pipeline prompt template references PRDiff and writes review.md", func() {
 		var pipeline aiv1alpha1.Pipeline
 
