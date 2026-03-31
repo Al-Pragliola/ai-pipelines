@@ -810,6 +810,10 @@ func (r *PipelineRunReconciler) buildJob(ctx context.Context, run *aiv1alpha1.Pi
 		if err := r.configureCheckoutPRJob(ctx, job, run, pipeline, step); err != nil {
 			return nil, err
 		}
+	case "watch-report":
+		if err := r.configureWatchReportJob(job, step); err != nil {
+			return nil, err
+		}
 	}
 
 	if step.DinD {
@@ -932,6 +936,26 @@ echo "checked out PR #%d head (credentials stripped)"`,
 						},
 					},
 				},
+			},
+		},
+	}
+
+	return nil
+}
+
+func (r *PipelineRunReconciler) configureWatchReportJob(job *batchv1.Job, step *aiv1alpha1.StepSpec) error {
+	if step.ReportFile == "" {
+		return fmt.Errorf("watch-report step %q requires reportFile to be set", step.Name)
+	}
+
+	job.Spec.Template.Spec.Containers = []corev1.Container{
+		{
+			Name:    "report",
+			Image:   readerImage,
+			Command: []string{"/bin/sh", "-c"},
+			Args:    []string{fmt.Sprintf("cat %s", step.ReportFile)},
+			VolumeMounts: []corev1.VolumeMount{
+				{Name: "workspace", MountPath: workspacePath},
 			},
 		},
 	}

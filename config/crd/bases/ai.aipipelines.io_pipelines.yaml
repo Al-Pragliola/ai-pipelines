@@ -219,6 +219,12 @@ spec:
                         promptTemplate is a Go template for the AI prompt (ai and triage steps).
                         When workflowRef is set, this serves as the issue/task context instead of methodology instructions.
                       type: string
+                    reportFile:
+                      description: |-
+                        reportFile is the path to a file in the workspace to display in the dashboard
+                        (watch-report only). The step reads this file and outputs it so the dashboard
+                        can render it as markdown.
+                      type: string
                     requireApproval:
                       description: |-
                         requireApproval pauses the pipeline before running this step and waits
@@ -234,6 +240,7 @@ spec:
                       - git-push
                       - triage
                       - git-checkout-pr
+                      - watch-report
                       type: string
                     workflowRef:
                       description: |-

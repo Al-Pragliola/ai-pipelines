@@ -106,7 +106,7 @@ function StepCard({ step, namespace, runName }: { step: StepStatus; namespace: s
           ref={logRef}
           className="bg-black/50 p-4 overflow-auto max-h-[32rem] border-t border-gray-800"
         >
-          <LogViewer logs={logs} isActive={ACTIVE_PHASES.has(step.phase) && (step.type === 'ai' || step.type === 'triage')} />
+          <LogViewer logs={logs} isActive={ACTIVE_PHASES.has(step.phase) && (step.type === 'ai' || step.type === 'triage')} stepType={step.type} />
         </div>
       )}
     </div>
@@ -117,10 +117,17 @@ function StepIcon({ type }: { type: string }) {
   const cls = "w-5 h-5 text-gray-500"
   switch (type) {
     case 'git-checkout':
+    case 'git-checkout-pr':
     case 'git-push':
       return (
         <svg className={cls} fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
           <path strokeLinecap="round" strokeLinejoin="round" d="M17.25 6.75 22.5 12l-5.25 5.25m-10.5 0L1.5 12l5.25-5.25m7.5-3-4.5 16.5" />
+        </svg>
+      )
+    case 'watch-report':
+      return (
+        <svg className={cls} fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+          <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 0 0-3.375-3.375h-1.5A1.125 1.125 0 0 1 13.5 7.125v-1.5a3.375 3.375 0 0 0-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 0 0-9-9Z" />
         </svg>
       )
     case 'ai':

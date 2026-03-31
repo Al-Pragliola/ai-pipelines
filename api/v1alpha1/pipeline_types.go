@@ -248,7 +248,7 @@ type StepSpec struct {
 
 	// type is the step type.
 	// +required
-	// +kubebuilder:validation:Enum=git-checkout;ai;shell;git-push;triage;git-checkout-pr
+	// +kubebuilder:validation:Enum=git-checkout;ai;shell;git-push;triage;git-checkout-pr;watch-report
 	Type string `json:"type"`
 
 	// workflowRef points to a workflow in a GitHub repo.
@@ -305,6 +305,12 @@ type StepSpec struct {
 	// +optional
 	// +kubebuilder:default="0.7"
 	ConfidenceThreshold string `json:"confidenceThreshold,omitempty"`
+
+	// reportFile is the path to a file in the workspace to display in the dashboard
+	// (watch-report only). The step reads this file and outputs it so the dashboard
+	// can render it as markdown.
+	// +optional
+	ReportFile string `json:"reportFile,omitempty"`
 }
 
 // PipelineStatus defines the observed state of Pipeline.

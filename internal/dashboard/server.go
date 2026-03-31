@@ -545,6 +545,8 @@ func (s *Server) handleGetLogs(w http.ResponseWriter, r *http.Request) {
 		logOpts.Container = "ai"
 	case "shell":
 		logOpts.Container = "shell"
+	case "watch-report":
+		logOpts.Container = "report"
 	default:
 		// For git-checkout, git-push, etc. — use the first main container
 		if len(pod.Spec.Containers) > 0 {

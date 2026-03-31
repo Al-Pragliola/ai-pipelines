@@ -9,7 +9,7 @@ import python from 'react-syntax-highlighter/dist/esm/languages/prism/python'
 import diff from 'react-syntax-highlighter/dist/esm/languages/prism/diff'
 
 import { type StreamEntry, tryParseLines, isStreamJson } from './streamUtils'
-import { ChatMessage, ResultSummary } from './StreamChat'
+import { ChatMessage, ResultSummary, MarkdownText } from './StreamChat'
 
 SyntaxHighlighter.registerLanguage('go', go)
 SyntaxHighlighter.registerLanguage('typescript', typescript)
@@ -26,7 +26,16 @@ SyntaxHighlighter.registerLanguage('python', python)
 SyntaxHighlighter.registerLanguage('py', python)
 SyntaxHighlighter.registerLanguage('diff', diff)
 
-export default function LogViewer({ logs, isActive = false }: { logs: string; isActive?: boolean }) {
+export default function LogViewer({ logs, isActive = false, stepType }: { logs: string; isActive?: boolean; stepType?: string }) {
+  if (stepType === 'watch-report') {
+    // Markdown report (watch-report steps)
+    return (
+      <div className="px-2">
+        <MarkdownText text={logs} />
+      </div>
+    )
+  }
+
   if (!isStreamJson(logs)) {
     // Plain text logs (shell, checkout, push steps)
     const lines = logs.split('\n')

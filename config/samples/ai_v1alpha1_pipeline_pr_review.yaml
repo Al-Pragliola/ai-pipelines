@@ -45,3 +45,7 @@ spec:
 
         ## Verdict
         APPROVE, REQUEST_CHANGES, or COMMENT with justification.
+
+    - name: show-review
+      type: watch-report
+      reportFile: /workspace/review.md
