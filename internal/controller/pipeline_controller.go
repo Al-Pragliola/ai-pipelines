@@ -89,6 +89,8 @@ func (r *PipelineReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 		secretRef = trig.GitHub.SecretRef
 	case trig.Jira != nil:
 		secretRef = trig.Jira.SecretRef
+	case trig.GitHubPRReview != nil:
+		secretRef = trig.GitHubPRReview.SecretRef
 	default:
 		log.Info("no trigger configured")
 		return ctrl.Result{}, nil
@@ -193,6 +195,8 @@ func (r *PipelineReconciler) runPoller(ctx context.Context, key types.Namespaced
 		interval, err = time.ParseDuration(spec.Trigger.GitHub.PollInterval)
 	case spec.Trigger.Jira != nil:
 		interval, err = time.ParseDuration(spec.Trigger.Jira.PollInterval)
+	case spec.Trigger.GitHubPRReview != nil:
+		interval, err = time.ParseDuration(spec.Trigger.GitHubPRReview.PollInterval)
 	}
 	if err != nil || interval == 0 {
 		interval = 30 * time.Second
@@ -229,6 +233,8 @@ func (r *PipelineReconciler) poll(ctx context.Context, namespace, pipelineName s
 		issues, err = trigger.FetchGitHubIssues(ctx, spec.Trigger.GitHub, token)
 	case spec.Trigger.Jira != nil:
 		issues, err = trigger.FetchJiraIssues(ctx, spec.Trigger.Jira, token, jiraEmail)
+	case spec.Trigger.GitHubPRReview != nil:
+		issues, err = trigger.FetchGitHubReviewRequests(ctx, spec.Trigger.GitHubPRReview, token)
 	}
 	if err != nil {
 		log.Error(err, "failed to fetch issues")
@@ -291,6 +297,31 @@ func (r *PipelineReconciler) createPipelineRun(ctx context.Context, namespace, p
 		return err
 	}
 
+	runSpec := aiv1alpha1.PipelineRunSpec{
+		PipelineRef: pipelineName,
+		IssueNumber: issue.Number,
+		IssueKey:    issue.Key,
+		IssueTitle:  issue.Title,
+		IssueBody:   issue.Body,
+	}
+
+	// Populate PR-specific fields for GitHubPRReview triggers
+	if pipeline.Spec.Trigger != nil && pipeline.Spec.Trigger.GitHubPRReview != nil {
+		runSpec.PRNumber = issue.Number
+		runSpec.PRAuthor = issue.PRAuthor
+		if runSpec.PRAuthor == "" {
+			runSpec.PRAuthor = "unknown"
+		}
+		runSpec.BaseBranch = issue.BaseBranch
+		if runSpec.BaseBranch == "" {
+			runSpec.BaseBranch = "main"
+		}
+		runSpec.HeadBranch = issue.HeadBranch
+		if runSpec.HeadBranch == "" {
+			runSpec.HeadBranch = fmt.Sprintf("pr-%d", issue.Number)
+		}
+	}
+
 	run := &aiv1alpha1.PipelineRun{
 		ObjectMeta: metav1.ObjectMeta{
 			GenerateName: fmt.Sprintf("%s-", pipelineName),
@@ -300,13 +331,7 @@ func (r *PipelineReconciler) createPipelineRun(ctx context.Context, namespace, p
 				"ai.aipipelines.io/issue-key": sanitizeLabelValue(issue.Key),
 			},
 		},
-		Spec: aiv1alpha1.PipelineRunSpec{
-			PipelineRef: pipelineName,
-			IssueNumber: issue.Number,
-			IssueKey:    issue.Key,
-			IssueTitle:  issue.Title,
-			IssueBody:   issue.Body,
-		},
+		Spec: runSpec,
 	}
 
 	if err := controllerutil.SetControllerReference(&pipeline, run, r.Scheme); err != nil {

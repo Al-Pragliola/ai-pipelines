@@ -19,6 +19,11 @@ type Issue struct {
 	Key    string `json:"key,omitempty"` // "#42" for GitHub, "PROJ-123" for Jira
 	Title  string `json:"title"`
 	Body   string `json:"body"`
+
+	// PR-specific metadata (populated by FetchGitHubReviewRequests)
+	PRAuthor   string `json:"prAuthor,omitempty"`
+	BaseBranch string `json:"baseBranch,omitempty"`
+	HeadBranch string `json:"headBranch,omitempty"`
 }
 
 // FetchGitHubIssues fetches open issues from GitHub using the Pipeline CRD trigger spec.
@@ -155,6 +160,15 @@ func FetchGitHubReviewRequests(ctx context.Context, spec *aiv1alpha1.GitHubPRRev
 		RequestedReviewers []struct {
 			Login string `json:"login"`
 		} `json:"requested_reviewers"`
+		User struct {
+			Login string `json:"login"`
+		} `json:"user"`
+		Base struct {
+			Ref string `json:"ref"`
+		} `json:"base"`
+		Head struct {
+			Ref string `json:"ref"`
+		} `json:"head"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&pulls); err != nil {
 		return nil, err
@@ -165,10 +179,13 @@ func FetchGitHubReviewRequests(ctx context.Context, spec *aiv1alpha1.GitHubPRRev
 		for _, reviewer := range pr.RequestedReviewers {
 			if reviewer.Login == spec.Reviewer {
 				issues = append(issues, Issue{
-					Number: pr.Number,
-					Key:    fmt.Sprintf("#PR-%d", pr.Number),
-					Title:  pr.Title,
-					Body:   pr.Body,
+					Number:     pr.Number,
+					Key:        fmt.Sprintf("#PR-%d", pr.Number),
+					Title:      pr.Title,
+					Body:       pr.Body,
+					PRAuthor:   pr.User.Login,
+					BaseBranch: pr.Base.Ref,
+					HeadBranch: pr.Head.Ref,
 				})
 				break
 			}
