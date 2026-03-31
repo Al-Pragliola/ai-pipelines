@@ -462,15 +462,20 @@ export default function RunDetail() {
 
   const issueRef = run.issueKey || (run.issueNumber ? `#${run.issueNumber}` : '')
   const isSpotRun = !issueRef
+  const isPRReview = !!run.prNumber
   const isTerminal = run.phase === 'Succeeded' || run.phase === 'Failed' || run.phase === 'Stopped' || run.phase === 'Deleting'
 
   return (
     <div>
       <div className="flex items-center gap-3 mb-6">
         <Link to="/" className="text-gray-400 hover:text-white transition-colors">&larr;</Link>
-        <Link to={`/pipelines/${namespace}/${run.pipeline}`} className="text-gray-400 hover:text-white transition-colors">{run.pipeline}</Link>
+        <Link to={`/pipelines/${namespace}/${run.pipeline}`} className="text-gray-400 hover:text-white transition-colors" title={run.pipeline}>
+          {isPRReview ? 'Pipeline' : run.pipeline}
+        </Link>
         <span className="text-gray-600">/</span>
-        <h1 className="text-2xl font-semibold">{run.name}</h1>
+        <h1 className="text-2xl font-semibold" title={run.name}>
+          {isPRReview ? `PR #${run.prNumber}` : run.name}
+        </h1>
         <StatusBadge status={run.phase} />
         <span className="ml-auto flex items-center gap-1">
           {!isTerminal && (
@@ -485,7 +490,18 @@ export default function RunDetail() {
 
       <div className="flex flex-wrap gap-6 mb-6 text-sm text-gray-400">
         <div>
-          {isSpotRun ? (
+          {isPRReview ? (
+            <>
+              <a
+                href={`https://github.com/${run.resolvedRepo ? `${run.resolvedRepo.owner}/${run.resolvedRepo.name}` : 'unknown'}/pull/${run.prNumber}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-indigo-400 hover:text-indigo-300"
+              >
+                {run.prTitle}
+              </a>
+            </>
+          ) : isSpotRun ? (
             <>
               <span className="text-gray-500">Task:</span>{' '}
               <span className="text-gray-200">{run.description || 'Spot run'}</span>
@@ -497,16 +513,32 @@ export default function RunDetail() {
             </>
           )}
         </div>
+        {isPRReview && run.prAuthor && (
+          <div>
+            <span className="text-gray-500">Author:</span>{' '}
+            <span className="text-gray-200">{run.prAuthor}</span>
+          </div>
+        )}
+        {isPRReview && run.baseBranch && run.headBranch && (
+          <div>
+            <span className="text-gray-500">Branches:</span>{' '}
+            <code className="text-xs bg-gray-800 px-2 py-0.5 rounded text-gray-300">{run.headBranch}</code>
+            <span className="text-gray-500 mx-1">&rarr;</span>
+            <code className="text-xs bg-gray-800 px-2 py-0.5 rounded text-gray-300">{run.baseBranch}</code>
+          </div>
+        )}
         {run.resolvedRepo && (
           <div>
             <span className="text-gray-500">Repo:</span>{' '}
             <span className="text-gray-200">{run.resolvedRepo.owner}/{run.resolvedRepo.name}</span>
           </div>
         )}
-        <div>
-          <span className="text-gray-500">Branch:</span>{' '}
-          <code className="text-xs bg-gray-800 px-2 py-0.5 rounded text-gray-300">{run.branch}</code>
-        </div>
+        {!isPRReview && (
+          <div>
+            <span className="text-gray-500">Branch:</span>{' '}
+            <code className="text-xs bg-gray-800 px-2 py-0.5 rounded text-gray-300">{run.branch}</code>
+          </div>
+        )}
         <div>
           <span className="text-gray-500">Duration:</span>{' '}
           <span className="tabular-nums">{duration(run.durationSeconds)}</span>

@@ -146,3 +146,86 @@ describe('StepCard - workflow badge', () => {
     expect(screen.queryByText(/workflow/i)).not.toBeInTheDocument()
   })
 })
+
+// --- PR Review trigger tests ---
+
+function makePRReviewRun() {
+  return {
+    name: 'pr-review-run',
+    namespace: 'default',
+    pipeline: 'pr-review-pipeline',
+    issueNumber: 0,
+    issueKey: '#PR-42',
+    issueTitle: 'Add feature X',
+    phase: 'Running',
+    currentStep: 'review',
+    branch: 'ai/review-pr-42',
+    prNumber: 42,
+    prTitle: 'Add feature X',
+    prBody: 'This PR adds feature X to the system',
+    prAuthor: 'contributor',
+    baseBranch: 'main',
+    headBranch: 'feature-x',
+    startedAt: '2026-01-01T00:00:00Z',
+    finishedAt: null,
+    durationSeconds: 60,
+    steps: [
+      {
+        name: 'review',
+        type: 'ai',
+        phase: 'Running',
+        startedAt: '2026-01-01T00:00:00Z',
+        finishedAt: null,
+        durationSeconds: 60,
+        jobName: 'job-review',
+        attempt: 1,
+        message: '',
+      },
+    ],
+  }
+}
+
+describe('RunDetail - PR review metadata display', () => {
+  it('shows PR number for PR review runs', async () => {
+    renderRunDetail(makePRReviewRun())
+
+    // The run detail should show the PR number (e.g., #42 or PR #42)
+    expect(await screen.findByText(/#42|PR.*42/)).toBeInTheDocument()
+  })
+
+  it('shows PR author for PR review runs', async () => {
+    renderRunDetail(makePRReviewRun())
+
+    // The run detail should display the PR author
+    await screen.findByText(/review/)
+    expect(screen.getByText(/contributor/)).toBeInTheDocument()
+  })
+
+  it('shows PR title for PR review runs', async () => {
+    renderRunDetail(makePRReviewRun())
+
+    // The PR title should be displayed
+    expect(await screen.findByText(/Add feature X/)).toBeInTheDocument()
+  })
+
+  it('links to the GitHub PR when PR metadata is present', async () => {
+    renderRunDetail(makePRReviewRun())
+
+    // Wait for render
+    await screen.findByText(/Add feature X/)
+
+    // There should be a link to the GitHub PR.
+    // The link href should point to the PR on GitHub.
+    const prLinks = document.querySelectorAll('a[href*="github.com"]')
+    expect(prLinks.length).toBeGreaterThan(0)
+  })
+
+  it('shows base and head branch info for PR review runs', async () => {
+    renderRunDetail(makePRReviewRun())
+
+    await screen.findByText(/review/)
+    // Base and head branch should be visible
+    expect(screen.getByText(/main/)).toBeInTheDocument()
+    expect(screen.getByText(/feature-x/)).toBeInTheDocument()
+  })
+})
