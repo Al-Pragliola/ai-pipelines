@@ -157,7 +157,11 @@ export default function PipelineList() {
                           </td>
                           <td className="px-3 py-2.5 text-gray-400">
                             {r.issueKey || r.issueNumber ? (
-                              <>{r.issueKey || `#${r.issueNumber}`} <span className="text-gray-500 truncate max-w-48 inline-block align-bottom">{r.issueTitle}</span></>
+                              <>
+                                {r.issueKey || `#${r.issueNumber}`}
+                                {r.prAuthor && <span className="text-gray-500 ml-1">by {r.prAuthor}</span>}
+                                {' '}<span className="text-gray-500 truncate max-w-48 inline-block align-bottom">{r.issueTitle}</span>
+                              </>
                             ) : (
                               <span className="text-gray-500 truncate max-w-48 inline-block align-bottom">{r.description || 'Spot run'}</span>
                             )}

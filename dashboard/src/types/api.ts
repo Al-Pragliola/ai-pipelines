@@ -37,6 +37,12 @@ export interface PipelineRun {
   chatPodName?: string;
   resolvedRepo?: SelectedRepo;
   triageResult?: TriageResult;
+  prNumber?: number;
+  prTitle?: string;
+  prBody?: string;
+  prAuthor?: string;
+  baseBranch?: string;
+  headBranch?: string;
   startedAt: string | null;
   finishedAt: string | null;
   durationSeconds?: number;

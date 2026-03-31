@@ -151,6 +151,12 @@ type runResponse struct {
 	ChatPodName     string                   `json:"chatPodName,omitempty"`
 	ResolvedRepo    *aiv1alpha1.SelectedRepo `json:"resolvedRepo,omitempty"`
 	TriageResult    *aiv1alpha1.TriageResult `json:"triageResult,omitempty"`
+	PRNumber        int                      `json:"prNumber,omitempty"`
+	PRTitle         string                   `json:"prTitle,omitempty"`
+	PRBody          string                   `json:"prBody,omitempty"`
+	PRAuthor        string                   `json:"prAuthor,omitempty"`
+	BaseBranch      string                   `json:"baseBranch,omitempty"`
+	HeadBranch      string                   `json:"headBranch,omitempty"`
 	StartedAt       *string                  `json:"startedAt"`
 	FinishedAt      *string                  `json:"finishedAt"`
 	DurationSeconds *int64                   `json:"durationSeconds,omitempty"`
@@ -218,6 +224,10 @@ func (s *Server) handleListPipelines(w http.ResponseWriter, r *http.Request) {
 				resp.TriggerInfo = p.Spec.Trigger.Jira.URL
 				resp.TriggerJQL = p.Spec.Trigger.Jira.JQL
 				resp.PollInterval = p.Spec.Trigger.Jira.PollInterval
+			case p.Spec.Trigger.GitHubPRReview != nil:
+				resp.TriggerType = "PR Review"
+				resp.TriggerInfo = fmt.Sprintf("%s/%s (reviewer: %s)", p.Spec.Trigger.GitHubPRReview.Owner, p.Spec.Trigger.GitHubPRReview.Repo, p.Spec.Trigger.GitHubPRReview.Reviewer)
+				resp.PollInterval = p.Spec.Trigger.GitHubPRReview.PollInterval
 			}
 		}
 		out = append(out, resp)
@@ -243,6 +253,8 @@ func (s *Server) handleGetPipeline(w http.ResponseWriter, r *http.Request) {
 			triggerType = "GitHub"
 		case pipeline.Spec.Trigger.Jira != nil:
 			triggerType = "Jira"
+		case pipeline.Spec.Trigger.GitHubPRReview != nil:
+			triggerType = "PR Review"
 		}
 	}
 
@@ -815,6 +827,8 @@ func (s *Server) handlePendingIssues(w http.ResponseWriter, r *http.Request) {
 		secretRef = pipeline.Spec.Trigger.GitHub.SecretRef
 	case pipeline.Spec.Trigger.Jira != nil:
 		secretRef = pipeline.Spec.Trigger.Jira.SecretRef
+	case pipeline.Spec.Trigger.GitHubPRReview != nil:
+		secretRef = pipeline.Spec.Trigger.GitHubPRReview.SecretRef
 	default:
 		writeJSON(w, []struct{}{})
 		return
@@ -1626,6 +1640,12 @@ func toRunResponse(run *aiv1alpha1.PipelineRun) runResponse {
 		ChatPodName:  run.Status.ChatPodName,
 		ResolvedRepo: run.Status.ResolvedRepo,
 		TriageResult: run.Status.TriageResult,
+		PRNumber:     run.Spec.PRNumber,
+		PRTitle:      run.Spec.PRTitle,
+		PRBody:       run.Spec.PRBody,
+		PRAuthor:     run.Spec.PRAuthor,
+		BaseBranch:   run.Spec.BaseBranch,
+		HeadBranch:   run.Spec.HeadBranch,
 		Steps:        make([]stepResponse, 0, len(run.Status.Steps)),
 	}
 	if run.Status.StartedAt != nil {
