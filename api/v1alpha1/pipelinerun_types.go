@@ -60,6 +60,14 @@ type PipelineRunSpec struct {
 	// +optional
 	PRNumber int `json:"prNumber,omitempty"`
 
+	// prTitle is the title of the pull request that triggered this run.
+	// +optional
+	PRTitle string `json:"prTitle,omitempty"`
+
+	// prBody is the body of the pull request that triggered this run.
+	// +optional
+	PRBody string `json:"prBody,omitempty"`
+
 	// prAuthor is the author of the pull request that triggered this run.
 	// +optional
 	PRAuthor string `json:"prAuthor,omitempty"`
