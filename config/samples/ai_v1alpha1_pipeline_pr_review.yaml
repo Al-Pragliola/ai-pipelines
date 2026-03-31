@@ -1,0 +1,44 @@
+apiVersion: ai.aipipelines.io/v1alpha1
+kind: Pipeline
+metadata:
+  name: pr-review-pipeline
+  namespace: default
+spec:
+  trigger:
+    githubPRReview:
+      owner: "your-github-org"
+      repo: "your-repo"
+      reviewer: "your-github-username"
+      pollInterval: "30s"
+      secretRef:
+        name: github-token
+
+  ai:
+    image: "localhost/ai-pipelines-claude:latest"
+    imagePullPolicy: Never
+
+  steps:
+    - name: review
+      type: ai
+      promptTemplate: |
+        You are a code reviewer. Review the following PR diff carefully and write
+        a detailed review report.
+
+        PR Diff:
+        {{.PRDiff}}
+
+        Write your review to /workspace/review.md following this format:
+
+        # Code Review
+
+        ## Summary
+        Brief overview of the changes.
+
+        ## Issues Found
+        List any bugs, security concerns, or logic errors.
+
+        ## Suggestions
+        Recommendations for improvement.
+
+        ## Verdict
+        APPROVE, REQUEST_CHANGES, or COMMENT with justification.
