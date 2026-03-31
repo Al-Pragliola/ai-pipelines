@@ -94,10 +94,18 @@ spec:
                 description: prAuthor is the author of the pull request that triggered
                   this run.
                 type: string
+              prBody:
+                description: prBody is the body of the pull request that triggered
+                  this run.
+                type: string
               prNumber:
                 description: prNumber is the pull request number that triggered this
                   run.
                 type: integer
+              prTitle:
+                description: prTitle is the title of the pull request that triggered
+                  this run.
+                type: string
               selectedRepo:
                 description: |-
                   selectedRepo is the repo chosen by user when triage is not confident.

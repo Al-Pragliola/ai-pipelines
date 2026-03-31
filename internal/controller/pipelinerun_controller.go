@@ -1503,6 +1503,13 @@ type templateData struct {
 	Description    string
 	Branch         string
 	Timestamp      string
+	PRNumber       int
+	PRTitle        string
+	PRBody         string
+	PRDiff         string
+	PRAuthor       string
+	BaseBranch     string
+	HeadBranch     string
 	RepoCandidates []repoCandidateData
 }
 
@@ -1523,6 +1530,12 @@ func newTemplateData(run *aiv1alpha1.PipelineRun, repos []aiv1alpha1.RepoCandida
 		Description: run.Spec.Description,
 		Branch:      run.Status.Branch,
 		Timestamp:   run.CreationTimestamp.Format("20060102T1504"),
+		PRNumber:    run.Spec.PRNumber,
+		PRTitle:     run.Spec.PRTitle,
+		PRBody:      run.Spec.PRBody,
+		PRAuthor:    run.Spec.PRAuthor,
+		BaseBranch:  run.Spec.BaseBranch,
+		HeadBranch:  run.Spec.HeadBranch,
 	}
 	for _, c := range repos {
 		data.RepoCandidates = append(data.RepoCandidates, repoCandidateData{
