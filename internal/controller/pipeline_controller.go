@@ -47,7 +47,12 @@ type PipelineReconciler struct {
 	History *issuehistory.Store
 
 	mu      sync.Mutex
-	pollers map[types.NamespacedName]context.CancelFunc
+	pollers map[types.NamespacedName]pollerState
+}
+
+type pollerState struct {
+	cancel     context.CancelFunc
+	generation int64
 }
 
 // +kubebuilder:rbac:groups=ai.aipipelines.io,resources=pipelines,verbs=get;list;watch;create;update;patch;delete
@@ -152,21 +157,26 @@ func (r *PipelineReconciler) readSecretKeyOptional(ctx context.Context, namespac
 }
 
 // ensurePoller starts a new poller or restarts if one is already running.
+// It skips restart if the pipeline's generation hasn't changed (avoids
+// flapping caused by status-only updates triggering reconciliation).
 func (r *PipelineReconciler) ensurePoller(key types.NamespacedName, pipeline *aiv1alpha1.Pipeline, token, jiraEmail string) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
 	if r.pollers == nil {
-		r.pollers = make(map[types.NamespacedName]context.CancelFunc)
+		r.pollers = make(map[types.NamespacedName]pollerState)
 	}
 
-	// Stop existing poller if running
-	if cancel, ok := r.pollers[key]; ok {
-		cancel()
+	// Skip restart if poller is already running with the same generation
+	if existing, ok := r.pollers[key]; ok {
+		if existing.generation == pipeline.Generation {
+			return
+		}
+		existing.cancel()
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
-	r.pollers[key] = cancel
+	r.pollers[key] = pollerState{cancel: cancel, generation: pipeline.Generation}
 
 	spec := pipeline.Spec.DeepCopy()
 	namespace := pipeline.Namespace
@@ -179,8 +189,8 @@ func (r *PipelineReconciler) stopPoller(key types.NamespacedName) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
-	if cancel, ok := r.pollers[key]; ok {
-		cancel()
+	if state, ok := r.pollers[key]; ok {
+		state.cancel()
 		delete(r.pollers, key)
 	}
 }
@@ -250,9 +260,16 @@ func (r *PipelineReconciler) poll(ctx context.Context, namespace, pipelineName s
 	}
 
 	for _, issue := range issues {
+		if ctx.Err() != nil {
+			return
+		}
+
 		// Layer 1: check live PipelineRun CRs (handles active runs)
 		exists, err := r.pipelineRunExists(ctx, namespace, pipelineName, issue.Key)
 		if err != nil {
+			if ctx.Err() != nil {
+				return
+			}
 			log.Error(err, "failed to check existing PipelineRun", "issue", issue.Key)
 			continue
 		}
@@ -264,6 +281,9 @@ func (r *PipelineReconciler) poll(ctx context.Context, namespace, pipelineName s
 		if r.History != nil {
 			completed, err := r.History.IsCompleted(ctx, namespace, pipelineName, issue.Key)
 			if err != nil {
+				if ctx.Err() != nil {
+					return
+				}
 				log.Error(err, "failed to check issue history", "issue", issue.Key)
 			}
 			if completed {
@@ -273,6 +293,9 @@ func (r *PipelineReconciler) poll(ctx context.Context, namespace, pipelineName s
 
 		log.Info("creating PipelineRun for new issue", "issue", issue.Key, "title", issue.Title)
 		if err := r.createPipelineRun(ctx, namespace, pipelineName, key, issue); err != nil {
+			if ctx.Err() != nil {
+				return
+			}
 			log.Error(err, "failed to create PipelineRun", "issue", issue.Key)
 		}
 	}

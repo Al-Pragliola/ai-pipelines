@@ -50,15 +50,15 @@ spec:
     - name: test
       type: ai
       dind: true
-      failureFile: /workspace/.test-failures.md
+      failureFile: /workspace/artifacts/test-failures.md
       onFailure: fix
       maxRetries: 3
       promptTemplate: |
         You are on branch `{{.Branch}}`. Run the tests for this repository.
         Check AGENTS.md, Makefile, and README.md for test instructions.
 
-        If ALL tests pass, delete `/workspace/.test-failures.md` if it exists.
-        If ANY test fails, write a failure report to `/workspace/.test-failures.md` and stop.
+        If ALL tests pass, delete `/workspace/artifacts/test-failures.md` if it exists.
+        If ANY test fails, write a failure report to `/workspace/artifacts/test-failures.md` and stop.
 
         Do NOT modify any source code. Do NOT run git commands.
 

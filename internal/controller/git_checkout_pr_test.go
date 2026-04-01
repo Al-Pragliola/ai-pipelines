@@ -326,6 +326,43 @@ var _ = Describe("git-checkout-pr step type", func() {
 			Expect(tokenEnv.ValueFrom.SecretKeyRef.Key).To(Equal("gh-pat"))
 		})
 
+		It("should generate a diff against the base branch and save to artifacts", func() {
+			step := &aiv1alpha1.StepSpec{
+				Name: "checkout-pr",
+				Type: "git-checkout-pr",
+			}
+
+			job := buildTestJob(run, step)
+			err := reconciler.configureCheckoutPRJob(context.Background(), job, run, pipeline, step)
+			Expect(err).NotTo(HaveOccurred())
+
+			script := strings.Join(job.Spec.Template.Spec.Containers[0].Args, " ")
+
+			Expect(script).To(ContainSubstring("mkdir -p /workspace/artifacts"),
+				"should create the artifacts directory")
+			Expect(script).To(ContainSubstring("git diff origin/main...HEAD"),
+				"should diff against the base branch")
+			Expect(script).To(ContainSubstring("artifacts/pr-diff.txt"),
+				"should save the diff to artifacts/pr-diff.txt")
+		})
+
+		It("should use the run's BaseBranch for the diff", func() {
+			run.Spec.BaseBranch = "develop"
+			step := &aiv1alpha1.StepSpec{
+				Name: "checkout-pr",
+				Type: "git-checkout-pr",
+			}
+
+			job := buildTestJob(run, step)
+			err := reconciler.configureCheckoutPRJob(context.Background(), job, run, pipeline, step)
+			Expect(err).NotTo(HaveOccurred())
+
+			script := strings.Join(job.Spec.Template.Spec.Containers[0].Args, " ")
+
+			Expect(script).To(ContainSubstring("git diff origin/develop...HEAD"),
+				"should diff against the run's BaseBranch")
+		})
+
 		It("should NOT create a new branch (no git checkout -b)", func() {
 			step := &aiv1alpha1.StepSpec{
 				Name: "checkout-pr",

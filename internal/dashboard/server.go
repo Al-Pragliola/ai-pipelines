@@ -96,6 +96,8 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/runs/{namespace}/{name}/chat/diff", s.handleChatDiff)
 	mux.HandleFunc("DELETE /api/runs/{namespace}/{name}/chat", s.handleStopChat)
 	mux.HandleFunc("DELETE /api/runs/{namespace}/{name}", s.handleDeleteRun)
+	mux.HandleFunc("GET /api/runs/{namespace}/{name}/artifacts", s.handleListArtifacts)
+	mux.HandleFunc("GET /api/runs/{namespace}/{name}/artifacts/download", s.handleDownloadArtifacts)
 	mux.HandleFunc("GET /api/operator/logs", s.handleOperatorLogs)
 
 	// Frontend — serve embedded SPA
@@ -959,6 +961,12 @@ func (s *Server) handleRetryRun(w http.ResponseWriter, r *http.Request) {
 			IssueKey:    run.Spec.IssueKey,
 			IssueTitle:  run.Spec.IssueTitle,
 			IssueBody:   run.Spec.IssueBody,
+			PRNumber:    run.Spec.PRNumber,
+			PRTitle:     run.Spec.PRTitle,
+			PRBody:      run.Spec.PRBody,
+			PRAuthor:    run.Spec.PRAuthor,
+			BaseBranch:  run.Spec.BaseBranch,
+			HeadBranch:  run.Spec.HeadBranch,
 		},
 	}
 
@@ -1496,7 +1504,7 @@ func (s *Server) handleChatDiff(w http.ResponseWriter, r *http.Request) {
 		SubResource("exec").
 		VersionedParams(&corev1.PodExecOptions{
 			Container: "chat",
-			Command:   []string{"/bin/sh", "-c", "cd /workspace && git config --global --add safe.directory /workspace && git diff HEAD --no-color -- ':!.test-failures.md'"},
+			Command:   []string{"/bin/sh", "-c", "cd /workspace && git config --global --add safe.directory /workspace && git diff HEAD --no-color -- ':!artifacts/'"},
 			Stdout:    true,
 			Stderr:    true,
 		}, scheme.ParameterCodec)
@@ -1549,7 +1557,7 @@ func (s *Server) handleRefreshDiff(w http.ResponseWriter, r *http.Request) {
 
 	// Create new diff job (mirrors createDiffJob in the controller)
 	var backoffLimit int32 = 0
-	script := `cd /workspace && git config --global --add safe.directory /workspace && git add -A && git diff --cached --no-color HEAD -- ':!.test-failures.md'`
+	script := `cd /workspace && git config --global --add safe.directory /workspace && git add -A && git diff --cached --no-color HEAD -- ':!artifacts/'`
 
 	job := &batchv1.Job{
 		ObjectMeta: metav1.ObjectMeta{
@@ -1692,6 +1700,205 @@ func toRunResponse(run *aiv1alpha1.PipelineRun) runResponse {
 		r.Steps = append(r.Steps, sr)
 	}
 	return r
+}
+
+// --- Artifacts ---
+
+func (s *Server) ensureArtifactsPod(ctx context.Context, namespace string, run *aiv1alpha1.PipelineRun) (string, error) {
+	podName := run.Name + "-artifacts"
+
+	// Reuse existing pod if it's running
+	if existing, err := s.clientset.CoreV1().Pods(namespace).Get(ctx, podName, metav1.GetOptions{}); err == nil {
+		if existing.Status.Phase == corev1.PodRunning {
+			return podName, nil
+		}
+		// Terminated pod — delete and recreate
+		_ = s.clientset.CoreV1().Pods(namespace).Delete(ctx, podName, metav1.DeleteOptions{})
+		for range 20 {
+			if _, err := s.clientset.CoreV1().Pods(namespace).Get(ctx, podName, metav1.GetOptions{}); apierrors.IsNotFound(err) {
+				break
+			}
+			time.Sleep(500 * time.Millisecond)
+		}
+	}
+
+	pod := &corev1.Pod{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      podName,
+			Namespace: namespace,
+			Labels: map[string]string{
+				"ai.aipipelines.io/pipeline-run": run.Name,
+				"ai.aipipelines.io/artifacts":    "true",
+			},
+		},
+		Spec: corev1.PodSpec{
+			RestartPolicy: corev1.RestartPolicyNever,
+			Volumes: []corev1.Volume{
+				{
+					Name: "workspace",
+					VolumeSource: corev1.VolumeSource{
+						PersistentVolumeClaim: &corev1.PersistentVolumeClaimVolumeSource{
+							ClaimName: run.Status.PVCName,
+						},
+					},
+				},
+			},
+			Containers: []corev1.Container{
+				{
+					Name:    "artifacts",
+					Image:   "alpine:latest",
+					Command: []string{"sleep", "infinity"},
+					VolumeMounts: []corev1.VolumeMount{
+						{Name: "workspace", MountPath: "/workspace"},
+					},
+				},
+			},
+		},
+	}
+
+	if err := controllerutil.SetControllerReference(run, pod, s.k8s.Scheme()); err != nil {
+		return "", fmt.Errorf("setting owner reference: %w", err)
+	}
+
+	if _, err := s.clientset.CoreV1().Pods(namespace).Create(ctx, pod, metav1.CreateOptions{}); err != nil {
+		if apierrors.IsAlreadyExists(err) {
+			return podName, nil
+		}
+		return "", fmt.Errorf("creating artifacts pod: %w", err)
+	}
+
+	// Wait for pod to be running
+	for range 20 {
+		p, err := s.clientset.CoreV1().Pods(namespace).Get(ctx, podName, metav1.GetOptions{})
+		if err == nil && p.Status.Phase == corev1.PodRunning {
+			return podName, nil
+		}
+		time.Sleep(500 * time.Millisecond)
+	}
+	return "", fmt.Errorf("artifacts pod did not become ready")
+}
+
+type artifactEntry struct {
+	Name string `json:"name"`
+	Size int64  `json:"size"`
+}
+
+func (s *Server) handleListArtifacts(w http.ResponseWriter, r *http.Request) {
+	namespace := r.PathValue("namespace")
+	name := r.PathValue("name")
+
+	var run aiv1alpha1.PipelineRun
+	if err := s.k8s.Get(r.Context(), client.ObjectKey{Namespace: namespace, Name: name}, &run); err != nil {
+		http.Error(w, err.Error(), http.StatusNotFound)
+		return
+	}
+	if run.Status.PVCName == "" {
+		http.Error(w, "no workspace available", http.StatusNotFound)
+		return
+	}
+
+	podName, err := s.ensureArtifactsPod(r.Context(), namespace, &run)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusServiceUnavailable)
+		return
+	}
+
+	// Exec find + stat to list artifacts with sizes
+	script := `find /workspace/artifacts -type f 2>/dev/null | while IFS= read -r f; do s=$(stat -c %s "$f" 2>/dev/null || echo 0); n="${f#/workspace/artifacts/}"; printf '%s\t%s\n' "$n" "$s"; done`
+	req := s.clientset.CoreV1().RESTClient().Post().
+		Resource("pods").
+		Name(podName).
+		Namespace(namespace).
+		SubResource("exec").
+		VersionedParams(&corev1.PodExecOptions{
+			Container: "artifacts",
+			Command:   []string{"/bin/sh", "-c", script},
+			Stdout:    true,
+			Stderr:    true,
+		}, scheme.ParameterCodec)
+
+	exec, err := remotecommand.NewSPDYExecutor(s.restConfig, "POST", req.URL())
+	if err != nil {
+		http.Error(w, fmt.Sprintf("failed to create executor: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	var stdout, stderr bytes.Buffer
+	if err := exec.StreamWithContext(r.Context(), remotecommand.StreamOptions{
+		Stdout: &stdout,
+		Stderr: &stderr,
+	}); err != nil {
+		http.Error(w, fmt.Sprintf("exec failed: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	var entries []artifactEntry
+	for _, line := range strings.Split(strings.TrimSpace(stdout.String()), "\n") {
+		if line == "" {
+			continue
+		}
+		parts := strings.SplitN(line, "\t", 2)
+		if len(parts) != 2 {
+			continue
+		}
+		size, _ := strconv.ParseInt(parts[1], 10, 64)
+		entries = append(entries, artifactEntry{Name: parts[0], Size: size})
+	}
+	if entries == nil {
+		entries = []artifactEntry{}
+	}
+
+	writeJSON(w, entries)
+}
+
+func (s *Server) handleDownloadArtifacts(w http.ResponseWriter, r *http.Request) {
+	namespace := r.PathValue("namespace")
+	name := r.PathValue("name")
+
+	var run aiv1alpha1.PipelineRun
+	if err := s.k8s.Get(r.Context(), client.ObjectKey{Namespace: namespace, Name: name}, &run); err != nil {
+		http.Error(w, err.Error(), http.StatusNotFound)
+		return
+	}
+	if run.Status.PVCName == "" {
+		http.Error(w, "no workspace available", http.StatusNotFound)
+		return
+	}
+
+	podName, err := s.ensureArtifactsPod(r.Context(), namespace, &run)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusServiceUnavailable)
+		return
+	}
+
+	req := s.clientset.CoreV1().RESTClient().Post().
+		Resource("pods").
+		Name(podName).
+		Namespace(namespace).
+		SubResource("exec").
+		VersionedParams(&corev1.PodExecOptions{
+			Container: "artifacts",
+			Command:   []string{"tar", "czf", "-", "-C", "/workspace/artifacts", "."},
+			Stdout:    true,
+			Stderr:    true,
+		}, scheme.ParameterCodec)
+
+	exec, err := remotecommand.NewSPDYExecutor(s.restConfig, "POST", req.URL())
+	if err != nil {
+		http.Error(w, fmt.Sprintf("failed to create executor: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/gzip")
+	w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="%s-artifacts.tar.gz"`, run.Name))
+
+	if err := exec.StreamWithContext(r.Context(), remotecommand.StreamOptions{
+		Stdout: w,
+		Stderr: io.Discard,
+	}); err != nil {
+		// Headers already sent, can't send HTTP error — best-effort log
+		return
+	}
 }
 
 func writeJSON(w http.ResponseWriter, v any) {

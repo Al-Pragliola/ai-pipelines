@@ -10,6 +10,7 @@ import ChatDialog from '../components/ChatDialog'
 import RetryButton from '../components/RetryButton'
 import StopButton from '../components/StopButton'
 import DeleteButton from '../components/DeleteButton'
+import ArtifactsPanel from '../components/ArtifactsPanel'
 
 function formatDuration(sec: number): string {
   if (sec < 60) return `${sec}s`
@@ -569,6 +570,10 @@ export default function RunDetail() {
           <StepCard key={`${s.name}-${s.attempt}`} step={s} namespace={namespace!} runName={name!} />
         ))}
       </div>
+
+      {run.phase !== 'Pending' && (
+        <ArtifactsPanel namespace={namespace!} runName={name!} phase={run.phase} />
+      )}
     </div>
   )
 }
