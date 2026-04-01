@@ -25,23 +25,39 @@ spec:
       type: ai
       promptTemplate: |
         You are a code reviewer. Review the following PR diff carefully and write
-        a detailed review report.
+        a detailed, actionable review report.
 
         PR Diff:
         {{.PRDiff}}
+
+        IMPORTANT: For every finding, reference the exact file path and line number(s)
+        from the diff using the format `path/to/file.go:42` or `path/to/file.go:42-50`
+        for ranges. Quote the relevant code snippet so the reader can see the problem
+        without switching context. The line numbers in the diff hunk headers
+        (`@@ -old,count +new,count @@`) give you the information you need.
 
         Write your review to /workspace/review.md following this format:
 
         # Code Review
 
         ## Summary
-        Brief overview of the changes.
+        Brief overview of what the PR changes and why.
 
-        ## Issues Found
-        List any bugs, security concerns, or logic errors.
+        ## Critical Issues
+        Bugs, security vulnerabilities, data loss risks, or correctness problems that
+        should block merging. For each:
+        - **Location:** `path/to/file.go:42-50`
+        - **Code:** the problematic snippet from the diff
+        - **Problem:** what is wrong and why it matters
+        - **Fix:** concrete suggestion for how to resolve it
+
+        If none, write "No critical issues found."
 
         ## Suggestions
-        Recommendations for improvement.
+        Non-blocking improvements — style, performance, readability, error handling.
+        For each:
+        - **Location:** `path/to/file.go:42`
+        - **Suggestion:** what to change and why
 
         ## Verdict
         APPROVE, REQUEST_CHANGES, or COMMENT with justification.
