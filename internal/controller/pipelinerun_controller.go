@@ -906,7 +906,7 @@ func (r *PipelineRunReconciler) configureCheckoutPRJob(_ context.Context, job *b
 		return fmt.Errorf("git-checkout-pr requires a non-zero PRNumber on the PipelineRun")
 	}
 
-	trigger := pipeline.Spec.Trigger.GitHubPRReview
+	prTrigger := pipeline.Spec.Trigger.GitHubPRReview
 
 	baseBranch := run.Spec.BaseBranch
 	if baseBranch == "" {
@@ -925,12 +925,12 @@ git remote set-url origin https://github.com/%s/%s.git
 chown -R 1000:1000 %s
 echo "checked out PR #%d head (diff saved to artifacts/pr-diff.txt, credentials stripped)"`,
 		workspacePath, workspacePath,
-		trigger.Owner, trigger.Repo, workspacePath,
+		prTrigger.Owner, prTrigger.Repo, workspacePath,
 		workspacePath,
 		run.Spec.PRNumber,
 		workspacePath,
 		baseBranch, workspacePath,
-		trigger.Owner, trigger.Repo,
+		prTrigger.Owner, prTrigger.Repo,
 		workspacePath,
 		run.Spec.PRNumber)
 
@@ -949,9 +949,9 @@ echo "checked out PR #%d head (diff saved to artifacts/pr-diff.txt, credentials 
 					ValueFrom: &corev1.EnvVarSource{
 						SecretKeyRef: &corev1.SecretKeySelector{
 							LocalObjectReference: corev1.LocalObjectReference{
-								Name: trigger.SecretRef.Name,
+								Name: prTrigger.SecretRef.Name,
 							},
-							Key: secretKey(trigger.SecretRef),
+							Key: secretKey(prTrigger.SecretRef),
 						},
 					},
 				},
