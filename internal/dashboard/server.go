@@ -99,6 +99,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("DELETE /api/runs/{namespace}/{name}", s.handleDeleteRun)
 	mux.HandleFunc("GET /api/runs/{namespace}/{name}/artifacts", s.handleListArtifacts)
 	mux.HandleFunc("GET /api/runs/{namespace}/{name}/artifacts/download", s.handleDownloadArtifacts)
+	mux.HandleFunc("GET /api/runs/{namespace}/{name}/artifacts/view/{filepath...}", s.handleViewArtifact)
 	mux.HandleFunc("GET /api/operator/logs", s.handleOperatorLogs)
 
 	// Frontend — serve embedded SPA
@@ -1900,6 +1901,70 @@ func (s *Server) handleDownloadArtifacts(w http.ResponseWriter, r *http.Request)
 		// Headers already sent, can't send HTTP error — best-effort log
 		return
 	}
+}
+
+func (s *Server) handleViewArtifact(w http.ResponseWriter, r *http.Request) {
+	namespace := r.PathValue("namespace")
+	name := r.PathValue("name")
+	filepath := r.PathValue("filepath")
+
+	if strings.Contains(filepath, "..") {
+		http.Error(w, "invalid path", http.StatusBadRequest)
+		return
+	}
+
+	var run aiv1alpha1.PipelineRun
+	if err := s.k8s.Get(r.Context(), client.ObjectKey{Namespace: namespace, Name: name}, &run); err != nil {
+		http.Error(w, err.Error(), http.StatusNotFound)
+		return
+	}
+	if run.Status.PVCName == "" {
+		http.Error(w, "no workspace available", http.StatusNotFound)
+		return
+	}
+
+	podName, err := s.ensureArtifactsPod(r.Context(), namespace, &run)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusServiceUnavailable)
+		return
+	}
+
+	// Read file content (limit to 2MB)
+	fullPath := "/workspace/artifacts/" + filepath
+	script := fmt.Sprintf(`if [ ! -f %q ]; then echo "file not found" >&2; exit 1; fi; head -c 2097152 %q`, fullPath, fullPath)
+	req := s.clientset.CoreV1().RESTClient().Post().
+		Resource("pods").
+		Name(podName).
+		Namespace(namespace).
+		SubResource("exec").
+		VersionedParams(&corev1.PodExecOptions{
+			Container: "artifacts",
+			Command:   []string{"/bin/sh", "-c", script},
+			Stdout:    true,
+			Stderr:    true,
+		}, scheme.ParameterCodec)
+
+	exec, err := remotecommand.NewSPDYExecutor(s.restConfig, "POST", req.URL())
+	if err != nil {
+		http.Error(w, fmt.Sprintf("failed to create executor: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	var stdout, stderr bytes.Buffer
+	if err := exec.StreamWithContext(r.Context(), remotecommand.StreamOptions{
+		Stdout: &stdout,
+		Stderr: &stderr,
+	}); err != nil {
+		msg := stderr.String()
+		if msg == "" {
+			msg = err.Error()
+		}
+		http.Error(w, msg, http.StatusNotFound)
+		return
+	}
+
+	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+	w.Write(stdout.Bytes())
 }
 
 func writeJSON(w http.ResponseWriter, v any) {

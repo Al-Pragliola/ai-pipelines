@@ -1,4 +1,24 @@
 import { useEffect, useState, useCallback } from 'react'
+import ArtifactViewerDialog from './ArtifactViewerDialog'
+
+const TEXT_EXTENSIONS = new Set([
+  'go', 'ts', 'tsx', 'js', 'jsx', 'py', 'rs', 'java', 'c', 'cpp', 'h', 'hpp',
+  'cs', 'rb', 'php', 'swift', 'kt', 'scala', 'r', 'lua', 'pl', 'ex', 'exs',
+  'json', 'yaml', 'yml', 'toml', 'ini', 'cfg', 'conf', 'env', 'properties',
+  'md', 'txt', 'rst', 'csv', 'log', 'tsv',
+  'html', 'htm', 'css', 'scss', 'less', 'svg', 'xml',
+  'sh', 'bash', 'zsh', 'fish', 'ps1', 'bat', 'cmd',
+  'sql', 'graphql', 'proto', 'diff', 'patch',
+])
+
+function isViewableFile(name: string): boolean {
+  const lower = name.toLowerCase()
+  const baseName = lower.split('/').pop() || ''
+  if (['makefile', 'dockerfile', '.gitignore', '.editorconfig'].includes(baseName)) return true
+  const ext = baseName.split('.').pop() || ''
+  if (ext === baseName) return false
+  return TEXT_EXTENSIONS.has(ext)
+}
 
 interface Artifact {
   name: string
@@ -18,6 +38,7 @@ export default function ArtifactsPanel({ namespace, runName, phase }: { namespac
   const [loading, setLoading] = useState(true)
   const [downloading, setDownloading] = useState(false)
   const [error, setError] = useState('')
+  const [viewingFile, setViewingFile] = useState<string | null>(null)
 
   const fetchArtifacts = useCallback(async () => {
     try {
@@ -86,10 +107,32 @@ export default function ArtifactsPanel({ namespace, runName, phase }: { namespac
         {artifacts.map(a => (
           <li key={a.name} className="flex items-center justify-between px-5 py-2 text-sm">
             <span className="text-gray-300 font-mono text-xs">{a.name}</span>
-            <span className="text-gray-500 text-xs tabular-nums">{formatSize(a.size)}</span>
+            <div className="flex items-center gap-3">
+              {isViewableFile(a.name) && (
+                <button
+                  onClick={() => setViewingFile(a.name)}
+                  className="text-gray-500 hover:text-indigo-400 transition-colors"
+                  title="View file"
+                >
+                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M2.036 12.322a1.012 1.012 0 0 1 0-.639C3.423 7.51 7.36 4.5 12 4.5c4.638 0 8.573 3.007 9.963 7.178.07.207.07.431 0 .639C20.577 16.49 16.64 19.5 12 19.5c-4.638 0-8.573-3.007-9.963-7.178Z" />
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z" />
+                  </svg>
+                </button>
+              )}
+              <span className="text-gray-500 text-xs tabular-nums">{formatSize(a.size)}</span>
+            </div>
           </li>
         ))}
       </ul>
+      {viewingFile && (
+        <ArtifactViewerDialog
+          namespace={namespace}
+          runName={runName}
+          fileName={viewingFile}
+          onClose={() => setViewingFile(null)}
+        />
+      )}
     </div>
   )
 }
