@@ -11,6 +11,8 @@ import (
 	aiv1alpha1 "github.com/Al-Pragliola/ai-pipelines/api/v1alpha1"
 )
 
+const gitHubAccept = "application/vnd.github+json"
+
 var gitHubAPIBaseURL = "https://api.github.com"
 
 type Issue struct {
@@ -26,29 +28,17 @@ type Issue struct {
 }
 
 // FetchGitHubIssues fetches open issues from GitHub using the Pipeline CRD trigger spec.
-func FetchGitHubIssues(ctx context.Context, gh *aiv1alpha1.GitHubTriggerSpec, token string) ([]Issue, error) {
-	url := fmt.Sprintf("https://api.github.com/repos/%s/%s/issues?assignee=%s&state=open&per_page=100",
-		gh.Owner, gh.Repo, gh.Assignee)
+func FetchGitHubIssues(ctx context.Context, gh *aiv1alpha1.GitHubTriggerSpec, token string, client *CachedClient) ([]Issue, error) {
+	url := fmt.Sprintf("%s/repos/%s/%s/issues?assignee=%s&state=open&per_page=100",
+		gitHubAPIBaseURL, gh.Owner, gh.Repo, gh.Assignee)
 
 	if len(gh.Labels) > 0 {
 		url += "&labels=" + strings.Join(gh.Labels, ",")
 	}
 
-	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
+	body, err := client.Get(ctx, url, token, gitHubAccept)
 	if err != nil {
 		return nil, err
-	}
-	req.Header.Set("Authorization", "Bearer "+token)
-	req.Header.Set("Accept", "application/vnd.github+json")
-
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close() //nolint:errcheck
-
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("github api returned %d", resp.StatusCode)
 	}
 
 	var ghIssues []struct {
@@ -56,7 +46,7 @@ func FetchGitHubIssues(ctx context.Context, gh *aiv1alpha1.GitHubTriggerSpec, to
 		Title  string `json:"title"`
 		Body   string `json:"body"`
 	}
-	if err := json.NewDecoder(resp.Body).Decode(&ghIssues); err != nil {
+	if err := json.Unmarshal(body, &ghIssues); err != nil {
 		return nil, err
 	}
 
@@ -132,24 +122,12 @@ func FetchJiraIssues(ctx context.Context, jira *aiv1alpha1.JiraTriggerSpec, toke
 }
 
 // FetchGitHubReviewRequests fetches open PRs where the configured reviewer has a pending review request.
-func FetchGitHubReviewRequests(ctx context.Context, spec *aiv1alpha1.GitHubPRReviewTriggerSpec, token string) ([]Issue, error) {
+func FetchGitHubReviewRequests(ctx context.Context, spec *aiv1alpha1.GitHubPRReviewTriggerSpec, token string, client *CachedClient) ([]Issue, error) {
 	url := fmt.Sprintf("%s/repos/%s/%s/pulls?state=open", gitHubAPIBaseURL, spec.Owner, spec.Repo)
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	body, err := client.Get(ctx, url, token, gitHubAccept)
 	if err != nil {
 		return nil, err
-	}
-	req.Header.Set("Authorization", "Bearer "+token)
-	req.Header.Set("Accept", "application/vnd.github+json")
-
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close() //nolint:errcheck
-
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("github api returned %d", resp.StatusCode)
 	}
 
 	var pulls []struct {
@@ -169,7 +147,7 @@ func FetchGitHubReviewRequests(ctx context.Context, spec *aiv1alpha1.GitHubPRRev
 			Ref string `json:"ref"`
 		} `json:"head"`
 	}
-	if err := json.NewDecoder(resp.Body).Decode(&pulls); err != nil {
+	if err := json.Unmarshal(body, &pulls); err != nil {
 		return nil, err
 	}
 

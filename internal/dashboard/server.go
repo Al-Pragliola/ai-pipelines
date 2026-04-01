@@ -34,12 +34,13 @@ import (
 )
 
 type Server struct {
-	k8s        client.Client
-	clientset  *kubernetes.Clientset
-	restConfig *rest.Config
-	frontend   fs.FS
-	history    *issuehistory.Store
-	logFile    string
+	k8s          client.Client
+	clientset    *kubernetes.Clientset
+	restConfig   *rest.Config
+	frontend     fs.FS
+	history      *issuehistory.Store
+	logFile      string
+	githubClient *trigger.CachedClient
 }
 
 func NewServer(frontend fs.FS, history *issuehistory.Store, logFile string) (*Server, error) {
@@ -63,7 +64,7 @@ func NewServer(frontend fs.FS, history *issuehistory.Store, logFile string) (*Se
 		return nil, fmt.Errorf("creating clientset: %w", err)
 	}
 
-	return &Server{k8s: k8sClient, clientset: clientset, restConfig: cfg, frontend: frontend, history: history, logFile: logFile}, nil
+	return &Server{k8s: k8sClient, clientset: clientset, restConfig: cfg, frontend: frontend, history: history, logFile: logFile, githubClient: trigger.NewCachedClient()}, nil
 }
 
 func (s *Server) Handler() http.Handler {
@@ -860,7 +861,7 @@ func (s *Server) handlePendingIssues(w http.ResponseWriter, r *http.Request) {
 	var issues []trigger.Issue
 	switch {
 	case pipeline.Spec.Trigger.GitHub != nil:
-		issues, err = trigger.FetchGitHubIssues(r.Context(), pipeline.Spec.Trigger.GitHub, token)
+		issues, err = trigger.FetchGitHubIssues(r.Context(), pipeline.Spec.Trigger.GitHub, token, s.githubClient)
 	case pipeline.Spec.Trigger.Jira != nil:
 		issues, err = trigger.FetchJiraIssues(r.Context(), pipeline.Spec.Trigger.Jira, token, jiraEmail)
 	}

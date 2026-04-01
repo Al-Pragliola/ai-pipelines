@@ -40,6 +40,7 @@ import (
 	aiv1alpha1 "github.com/Al-Pragliola/ai-pipelines/api/v1alpha1"
 	"github.com/Al-Pragliola/ai-pipelines/internal/controller"
 	"github.com/Al-Pragliola/ai-pipelines/internal/issuehistory"
+	"github.com/Al-Pragliola/ai-pipelines/internal/trigger"
 	// +kubebuilder:scaffold:imports
 )
 
@@ -205,10 +206,13 @@ func main() {
 	}
 	defer history.Close() //nolint:errcheck
 
+	ghClient := trigger.NewCachedClient()
+
 	if err := (&controller.PipelineReconciler{
-		Client:  mgr.GetClient(),
-		Scheme:  mgr.GetScheme(),
-		History: history,
+		Client:       mgr.GetClient(),
+		Scheme:       mgr.GetScheme(),
+		History:      history,
+		GitHubClient: ghClient,
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "Failed to create controller", "controller", "Pipeline")
 		os.Exit(1)
@@ -219,10 +223,11 @@ func main() {
 		os.Exit(1)
 	}
 	if err := (&controller.PipelineRunReconciler{
-		Client:    mgr.GetClient(),
-		Scheme:    mgr.GetScheme(),
-		Clientset: clientset,
-		History:   history,
+		Client:       mgr.GetClient(),
+		Scheme:       mgr.GetScheme(),
+		Clientset:    clientset,
+		History:      history,
+		GitHubClient: ghClient,
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "Failed to create controller", "controller", "PipelineRun")
 		os.Exit(1)

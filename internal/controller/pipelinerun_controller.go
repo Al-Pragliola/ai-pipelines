@@ -22,7 +22,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"net/http"
 	"strconv"
 	"strings"
 	"text/template"
@@ -43,6 +42,7 @@ import (
 
 	aiv1alpha1 "github.com/Al-Pragliola/ai-pipelines/api/v1alpha1"
 	"github.com/Al-Pragliola/ai-pipelines/internal/issuehistory"
+	"github.com/Al-Pragliola/ai-pipelines/internal/trigger"
 )
 
 const (
@@ -58,9 +58,10 @@ const (
 // PipelineRunReconciler reconciles a PipelineRun object.
 type PipelineRunReconciler struct {
 	client.Client
-	Scheme    *runtime.Scheme
-	Clientset kubernetes.Interface
-	History   *issuehistory.Store
+	Scheme       *runtime.Scheme
+	Clientset    kubernetes.Interface
+	History      *issuehistory.Store
+	GitHubClient *trigger.CachedClient
 }
 
 // +kubebuilder:rbac:groups=ai.aipipelines.io,resources=pipelineruns,verbs=get;list;watch;create;update;patch;delete
@@ -76,6 +77,9 @@ type PipelineRunReconciler struct {
 // +kubebuilder:rbac:groups="",resources=pods/log,verbs=get
 
 func (r *PipelineRunReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
+	if r.GitHubClient == nil {
+		r.GitHubClient = trigger.NewCachedClient()
+	}
 	log := logf.FromContext(ctx)
 
 	var run aiv1alpha1.PipelineRun
@@ -1401,7 +1405,7 @@ func (r *PipelineRunReconciler) configureTriageJob(ctx context.Context, job *bat
 		// Fetch README and file tree from GitHub (best-effort)
 		token, err := r.readSecretToken(ctx, run.Namespace, c.SecretRef)
 		if err == nil {
-			candidate.Readme, candidate.FileTree = fetchRepoMetadata(ctx, c.Owner, c.Name, token)
+			candidate.Readme, candidate.FileTree = fetchRepoMetadata(ctx, c.Owner, c.Name, token, r.GitHubClient)
 			log.Info("fetched repo metadata", "repo", c.Owner+"/"+c.Name,
 				"readmeLen", len(candidate.Readme), "treeLen", len(candidate.FileTree))
 		} else {
@@ -1696,49 +1700,35 @@ func renderString(tmplStr string, data templateData) (string, error) {
 // fetchRepoMetadata fetches README content and top-level directory listing
 // from GitHub so the triage AI can make informed repo selection decisions
 // without needing direct repo access.
-func fetchRepoMetadata(ctx context.Context, owner, name, token string) (string, string) {
+func fetchRepoMetadata(ctx context.Context, owner, name, token string, ghClient *trigger.CachedClient) (string, string) {
 	var readme, fileTree string
+
 	// Fetch README
 	readmeURL := fmt.Sprintf("https://api.github.com/repos/%s/%s/readme", owner, name)
-	if req, err := http.NewRequestWithContext(ctx, "GET", readmeURL, nil); err == nil {
-		req.Header.Set("Authorization", "Bearer "+token)
-		req.Header.Set("Accept", "application/vnd.github.raw+json")
-		if resp, err := http.DefaultClient.Do(req); err == nil {
-			defer resp.Body.Close() //nolint:errcheck
-			if resp.StatusCode == http.StatusOK {
-				data, _ := io.ReadAll(resp.Body)
-				readme = string(data)
-				if len(readme) > 3000 {
-					readme = readme[:3000] + "\n... (truncated)"
-				}
-			}
+	if data, err := ghClient.Get(ctx, readmeURL, token, "application/vnd.github.raw+json"); err == nil {
+		readme = string(data)
+		if len(readme) > 3000 {
+			readme = readme[:3000] + "\n... (truncated)"
 		}
 	}
 
 	// Fetch top-level directory listing
 	treeURL := fmt.Sprintf("https://api.github.com/repos/%s/%s/contents/", owner, name)
-	if req, err := http.NewRequestWithContext(ctx, "GET", treeURL, nil); err == nil {
-		req.Header.Set("Authorization", "Bearer "+token)
-		req.Header.Set("Accept", "application/vnd.github+json")
-		if resp, err := http.DefaultClient.Do(req); err == nil {
-			defer resp.Body.Close() //nolint:errcheck
-			if resp.StatusCode == http.StatusOK {
-				var entries []struct {
-					Name string `json:"name"`
-					Type string `json:"type"`
-				}
-				if err := json.NewDecoder(resp.Body).Decode(&entries); err == nil {
-					var lines []string
-					for _, e := range entries {
-						if e.Type == "dir" {
-							lines = append(lines, e.Name+"/")
-						} else {
-							lines = append(lines, e.Name)
-						}
-					}
-					fileTree = strings.Join(lines, "\n")
+	if data, err := ghClient.Get(ctx, treeURL, token, "application/vnd.github+json"); err == nil {
+		var entries []struct {
+			Name string `json:"name"`
+			Type string `json:"type"`
+		}
+		if err := json.Unmarshal(data, &entries); err == nil {
+			var lines []string
+			for _, e := range entries {
+				if e.Type == "dir" {
+					lines = append(lines, e.Name+"/")
+				} else {
+					lines = append(lines, e.Name)
 				}
 			}
+			fileTree = strings.Join(lines, "\n")
 		}
 	}
 
