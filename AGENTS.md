@@ -66,9 +66,12 @@ make generate   # Regenerate DeepCopy methods
 
 **After editing `*.go` files:**
 ```
-make lint-fix   # Auto-fix code style
+make lint-fix   # Auto-fix what golangci-lint can fix automatically
+make lint       # Verify no remaining lint errors (must pass before committing)
 make test       # Run unit tests
 ```
+
+If `make lint` still reports errors after `lint-fix`, fix them manually and re-run `make lint` until it passes. Do not commit code that fails `make lint`.
 
 ## CLI Commands Cheat Sheet
 
