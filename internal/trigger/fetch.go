@@ -193,7 +193,6 @@ func FetchGitHubReviewRequests(ctx context.Context, spec *aiv1alpha1.GitHubPRRev
 	return issues, nil
 }
 
-
 // FlattenADF extracts plain text from Jira's Atlassian Document Format.
 func FlattenADF(v any) string {
 	if v == nil {
