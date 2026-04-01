@@ -63,7 +63,7 @@ func TestFetchGitHubReviewRequests_FiltersByReviewer(t *testing.T) {
 		Reviewer: "target-reviewer",
 	}
 
-	issues, err := FetchGitHubReviewRequests(context.Background(), spec, "test-token")
+	issues, err := FetchGitHubReviewRequests(context.Background(), spec, "test-token", NewCachedClient())
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -130,7 +130,7 @@ func TestFetchGitHubReviewRequests_NoMatchingReviewer(t *testing.T) {
 		Reviewer: "target-reviewer",
 	}
 
-	issues, err := FetchGitHubReviewRequests(context.Background(), spec, "token")
+	issues, err := FetchGitHubReviewRequests(context.Background(), spec, "token", NewCachedClient())
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -166,7 +166,7 @@ func TestFetchGitHubReviewRequests_EmptyReviewers(t *testing.T) {
 		Reviewer: "reviewer",
 	}
 
-	issues, err := FetchGitHubReviewRequests(context.Background(), spec, "token")
+	issues, err := FetchGitHubReviewRequests(context.Background(), spec, "token", NewCachedClient())
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -192,7 +192,7 @@ func TestFetchGitHubReviewRequests_APIError(t *testing.T) {
 		Reviewer: "reviewer",
 	}
 
-	_, err := FetchGitHubReviewRequests(context.Background(), spec, "bad-token")
+	_, err := FetchGitHubReviewRequests(context.Background(), spec, "bad-token", NewCachedClient())
 	if err == nil {
 		t.Fatal("expected error for non-200 response, got nil")
 	}
@@ -226,7 +226,7 @@ func TestFetchGitHubReviewRequests_KeyFormat(t *testing.T) {
 		Reviewer: "myuser",
 	}
 
-	issues, err := FetchGitHubReviewRequests(context.Background(), spec, "token")
+	issues, err := FetchGitHubReviewRequests(context.Background(), spec, "token", NewCachedClient())
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -267,7 +267,7 @@ func TestFetchGitHubReviewRequests_URLAndHeaders(t *testing.T) {
 		Reviewer: "reviewer",
 	}
 
-	_, err := FetchGitHubReviewRequests(context.Background(), spec, "my-secret-token")
+	_, err := FetchGitHubReviewRequests(context.Background(), spec, "my-secret-token", NewCachedClient())
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}

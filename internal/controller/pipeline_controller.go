@@ -43,8 +43,9 @@ const defaultSecretKey = "token"
 // PipelineReconciler reconciles a Pipeline object.
 type PipelineReconciler struct {
 	client.Client
-	Scheme  *runtime.Scheme
-	History *issuehistory.Store
+	Scheme       *runtime.Scheme
+	History      *issuehistory.Store
+	GitHubClient *trigger.CachedClient
 
 	mu      sync.Mutex
 	pollers map[types.NamespacedName]pollerState
@@ -62,6 +63,9 @@ type pollerState struct {
 // +kubebuilder:rbac:groups="",resources=secrets,verbs=get;list;watch
 
 func (r *PipelineReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
+	if r.GitHubClient == nil {
+		r.GitHubClient = trigger.NewCachedClient()
+	}
 	log := logf.FromContext(ctx)
 
 	var pipeline aiv1alpha1.Pipeline
@@ -240,11 +244,11 @@ func (r *PipelineReconciler) poll(ctx context.Context, namespace, pipelineName s
 
 	switch {
 	case spec.Trigger.GitHub != nil:
-		issues, err = trigger.FetchGitHubIssues(ctx, spec.Trigger.GitHub, token)
+		issues, err = trigger.FetchGitHubIssues(ctx, spec.Trigger.GitHub, token, r.GitHubClient)
 	case spec.Trigger.Jira != nil:
 		issues, err = trigger.FetchJiraIssues(ctx, spec.Trigger.Jira, token, jiraEmail)
 	case spec.Trigger.GitHubPRReview != nil:
-		issues, err = trigger.FetchGitHubReviewRequests(ctx, spec.Trigger.GitHubPRReview, token)
+		issues, err = trigger.FetchGitHubReviewRequests(ctx, spec.Trigger.GitHubPRReview, token, r.GitHubClient)
 	}
 	if err != nil {
 		log.Error(err, "failed to fetch issues")
