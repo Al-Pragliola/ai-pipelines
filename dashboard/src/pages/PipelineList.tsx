@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import type { Pipeline, PipelineRun } from '../types/api'
 import StatusBadge from '../components/StatusBadge'
@@ -9,7 +9,78 @@ import DeleteButton from '../components/DeleteButton'
 import YamlEditor from '../components/YamlEditor'
 
 const TERMINAL = new Set(['Succeeded', 'Failed', 'Stopped', 'Deleting'])
-const PAGE_SIZE = 10
+const PAGE_SIZE = 5
+
+const BAR_COLORS: Record<string, string> = {
+  Running: 'bg-blue-500',
+  WaitingForInput: 'bg-orange-500',
+  Initializing: 'bg-cyan-500',
+  Failed: 'bg-red-500',
+  Succeeded: 'bg-green-500',
+  Stopped: 'bg-gray-600',
+  Pending: 'bg-yellow-500',
+  Deleting: 'bg-red-500',
+}
+
+const TEXT_COLORS: Record<string, string> = {
+  Running: 'text-blue-400',
+  WaitingForInput: 'text-orange-400',
+  Initializing: 'text-cyan-400',
+  Failed: 'text-red-400',
+  Stopped: 'text-gray-400',
+}
+
+// Order for rendering bar segments and attention counts
+const STATUS_ORDER = ['Failed', 'WaitingForInput', 'Running', 'Initializing', 'Pending', 'Stopped', 'Succeeded', 'Deleting']
+
+function HealthBar({ runs }: { runs: PipelineRun[] }) {
+  const statusCounts = useMemo(() => {
+    const counts: Record<string, number> = {}
+    runs.forEach(r => { counts[r.phase] = (counts[r.phase] || 0) + 1 })
+    return counts
+  }, [runs])
+
+  const total = runs.length
+  if (total === 0) return <span className="text-xs text-gray-600">No runs</span>
+
+  const segments = STATUS_ORDER
+    .map(phase => ({ phase, color: BAR_COLORS[phase] || 'bg-gray-600', count: statusCounts[phase] || 0 }))
+    .filter(s => s.count > 0)
+
+  // Show attention items: anything that's not Succeeded
+  const attentionItems = STATUS_ORDER
+    .filter(phase => phase !== 'Succeeded' && statusCounts[phase])
+    .map(phase => ({ phase, count: statusCounts[phase] }))
+
+  return (
+    <div className="flex flex-col items-end gap-1">
+      <div
+        className="flex h-1.5 rounded-full overflow-hidden w-24 bg-gray-800"
+        title={segments.map(s => `${s.count} ${s.phase}`).join(', ')}
+      >
+        {segments.map(s => (
+          <div
+            key={s.phase}
+            className={s.color}
+            style={{ width: `${Math.max((s.count / total) * 100, 4)}%` }}
+          />
+        ))}
+      </div>
+      <div className="flex items-center gap-1.5 text-xs">
+        <span className="text-gray-500">{total} {total === 1 ? 'run' : 'runs'}</span>
+        {attentionItems.map(({ phase, count }) => (
+          <span key={phase} className={TEXT_COLORS[phase] || 'text-gray-400'}>
+            &middot; {count} {phase === 'WaitingForInput' ? 'waiting' : phase.toLowerCase()}
+          </span>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+function stripPrefix(runName: string, pipelineName: string): string {
+  return runName.startsWith(pipelineName + '-') ? runName.slice(pipelineName.length + 1) : runName
+}
 
 export default function PipelineList() {
   const [pipelines, setPipelines] = useState<Pipeline[]>([])
@@ -100,12 +171,13 @@ export default function PipelineList() {
 
           return (
             <div key={key} className="bg-gray-900 border border-gray-800 rounded-lg overflow-hidden">
+              {/* Pipeline header */}
               <Link
                 to={`/pipelines/${p.namespace}/${p.name}`}
                 className="block p-5 hover:bg-gray-800/50 transition-colors"
               >
-                <div className="flex items-center justify-between">
-                  <div>
+                <div className="flex items-start justify-between gap-4">
+                  <div className="min-w-0">
                     <h2 className="text-lg font-medium text-white">{p.name}</h2>
                     <p className="text-sm text-gray-400 mt-1">
                       {p.triggerType === 'Spot' ? (
@@ -120,93 +192,100 @@ export default function PipelineList() {
                       </p>
                     )}
                   </div>
-                  <div className="flex items-center gap-3">
+                  <div className="flex items-center gap-5 flex-shrink-0">
                     <button
-                      title="View YAML"
+                      title="View pipeline YAML"
                       onClick={(e) => { e.preventDefault(); openYaml(p.namespace, p.name) }}
-                      className="group p-1.5 rounded-md text-gray-500 hover:text-indigo-400 hover:bg-indigo-500/10 transition-all duration-150"
+                      className="flex items-center gap-1.5 px-2 py-1 rounded text-xs text-gray-500 hover:text-indigo-400 hover:bg-indigo-500/10 transition-colors"
                     >
-                      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-5 h-5 transition-transform duration-150 group-hover:scale-110">
-                        <path d="M12 15a3 3 0 100-6 3 3 0 000 6z" />
-                        <path fillRule="evenodd" d="M1.323 11.447C2.811 6.976 7.028 3.75 12.001 3.75c4.97 0 9.185 3.223 10.675 7.69.12.362.12.752 0 1.113-1.487 4.471-5.705 7.697-10.677 7.697-4.97 0-9.186-3.223-10.675-7.69a1.762 1.762 0 010-1.113zM17.25 12a5.25 5.25 0 11-10.5 0 5.25 5.25 0 0110.5 0z" clipRule="evenodd" />
+                      <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" d="m17.25 6.75 4.5 4.5-4.5 4.5m-10.5 0L2.25 11.25l4.5-4.5m7.5-3-4.5 16.5" />
                       </svg>
+                      YAML
                     </button>
-                    <div className="text-right">
-                      <div className="text-sm text-gray-400">
-                        {p.activeRuns > 0 ? (
-                          <span className="text-blue-400">{p.activeRuns} running</span>
-                        ) : (
-                          <span>idle</span>
-                        )}
-                      </div>
-                      <div className="text-xs text-gray-500 mt-1">{p.totalRuns} total runs</div>
-                    </div>
+                    <HealthBar runs={allRuns} />
                   </div>
                 </div>
               </Link>
+
+              {/* Run list */}
               {pageRuns.length > 0 && (
-                <div className="border-t border-gray-800">
-                  <table className="w-full text-sm">
-                    <tbody className="divide-y divide-gray-800/50">
-                      {pageRuns.map(r => (
-                        <tr key={r.name} className="hover:bg-gray-800/30 transition-colors">
-                          <td className="px-5 py-2.5">
-                            <Link to={`/runs/${r.namespace}/${r.name}`} className="text-indigo-400 hover:text-indigo-300">
-                              {r.name}
-                            </Link>
-                          </td>
-                          <td className="px-3 py-2.5 text-gray-400">
-                            {r.issueKey || r.issueNumber ? (
-                              <>
-                                {r.issueKey || `#${r.issueNumber}`}
-                                {r.prAuthor && <span className="text-gray-500 ml-1">by {r.prAuthor}</span>}
-                                {' '}<span className="text-gray-500 truncate max-w-48 inline-block align-bottom">{r.issueTitle}</span>
-                              </>
-                            ) : (
-                              <span className="text-gray-500 truncate max-w-48 inline-block align-bottom">{r.description || 'Spot run'}</span>
-                            )}
-                          </td>
-                          <td className="px-3 py-2.5"><StatusBadge status={r.phase} /></td>
-                          <td className="px-3 py-2.5 text-gray-500 text-xs">{r.currentStep || '—'}</td>
-                          <td className="px-3 py-2.5 text-gray-500 text-xs"><TimeAgo date={r.startedAt} /></td>
-                          <td className="px-3 py-2.5 text-right">
-                            <span className="flex items-center gap-0.5">
-                              {TERMINAL.has(r.phase) ? (
-                                <RetryButton namespace={r.namespace} name={r.name} small />
-                              ) : (
-                                <StopButton namespace={r.namespace} name={r.name} small />
-                              )}
-                              <DeleteButton namespace={r.namespace} name={r.name} small />
+                <div className="border-t border-gray-800 divide-y divide-gray-800/50">
+                  {pageRuns.map(r => {
+                    const issueLabel = r.issueKey || (r.issueNumber ? `#${r.issueNumber}` : '')
+                    const title = r.issueTitle || r.description || 'Spot run'
+                    const runId = stripPrefix(r.name, p.name)
+                    const isActive = !TERMINAL.has(r.phase)
+
+                    return (
+                      <div key={r.name} className="flex items-center gap-4 px-5 py-2.5 hover:bg-gray-800/30 transition-colors">
+                        {/* Status badge */}
+                        <div className="flex-shrink-0 w-36">
+                          <StatusBadge status={r.phase} />
+                        </div>
+
+                        {/* Issue / content */}
+                        <div className="flex-1 min-w-0">
+                          <Link to={`/runs/${r.namespace}/${r.name}`} className="group block truncate">
+                            <span className="text-sm">
+                              {issueLabel && <span className="text-indigo-400 group-hover:text-indigo-300 font-medium">{issueLabel}</span>}
+                              {issueLabel && ' '}
+                              <span className="text-gray-300 group-hover:text-white">{title}</span>
                             </span>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                  {totalPages > 1 && (
-                    <div className="flex items-center justify-between px-5 py-2 border-t border-gray-800/50 text-xs text-gray-500">
-                      <span>{filtered.length} runs</span>
-                      <div className="flex items-center gap-2">
-                        <button
-                          onClick={() => setPages(p => ({ ...p, [key]: page - 1 }))}
-                          disabled={page === 0}
-                          className="px-2 py-1 rounded hover:bg-gray-800 disabled:opacity-30 disabled:cursor-not-allowed"
-                        >
-                          ← Prev
-                        </button>
-                        <span>{page + 1} / {totalPages}</span>
-                        <button
-                          onClick={() => setPages(p => ({ ...p, [key]: page + 1 }))}
-                          disabled={page >= totalPages - 1}
-                          className="px-2 py-1 rounded hover:bg-gray-800 disabled:opacity-30 disabled:cursor-not-allowed"
-                        >
-                          Next →
-                        </button>
+                          </Link>
+                          <div className="flex items-center gap-2 mt-0.5 text-xs text-gray-500">
+                            <span className="font-mono text-gray-600">{runId}</span>
+                            {r.prAuthor && <span>by {r.prAuthor}</span>}
+                            {isActive && r.currentStep && (
+                              <span className="text-gray-400">&middot; {r.currentStep}</span>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* Time */}
+                        <div className="flex-shrink-0 text-xs text-gray-500 w-16 text-right">
+                          <TimeAgo date={r.startedAt} />
+                        </div>
+
+                        {/* Actions */}
+                        <div className="flex-shrink-0 flex items-center gap-0.5">
+                          {TERMINAL.has(r.phase) ? (
+                            <RetryButton namespace={r.namespace} name={r.name} small />
+                          ) : (
+                            <StopButton namespace={r.namespace} name={r.name} small />
+                          )}
+                          <DeleteButton namespace={r.namespace} name={r.name} small />
+                        </div>
                       </div>
-                    </div>
-                  )}
+                    )
+                  })}
                 </div>
               )}
+
+              {/* Pagination */}
+              {totalPages > 1 && (
+                <div className="flex items-center justify-between px-5 py-2 border-t border-gray-800/50 text-xs text-gray-500">
+                  <span>{filtered.length} runs</span>
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => setPages(prev => ({ ...prev, [key]: page - 1 }))}
+                      disabled={page === 0}
+                      className="px-2 py-1 rounded hover:bg-gray-800 disabled:opacity-30 disabled:cursor-not-allowed"
+                    >
+                      &larr; Prev
+                    </button>
+                    <span>{page + 1} / {totalPages}</span>
+                    <button
+                      onClick={() => setPages(prev => ({ ...prev, [key]: page + 1 }))}
+                      disabled={page >= totalPages - 1}
+                      className="px-2 py-1 rounded hover:bg-gray-800 disabled:opacity-30 disabled:cursor-not-allowed"
+                    >
+                      Next &rarr;
+                    </button>
+                  </div>
+                </div>
+              )}
+
               {filtered.length === 0 && allRuns.length > 0 && (
                 <div className="border-t border-gray-800 px-5 py-3 text-sm text-gray-500">
                   No active runs
@@ -217,6 +296,7 @@ export default function PipelineList() {
         })}
       </div>
 
+      {/* YAML modal */}
       {yamlModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center animate-in fade-in duration-150">
           <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={() => setYamlModal(null)} />
