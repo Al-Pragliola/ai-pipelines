@@ -129,8 +129,8 @@ var _ = Describe("Sample Pipeline for PR review", func() {
 				}
 				if step.Type == "watch-report" {
 					reportIdx = i
-					Expect(step.ReportFile).To(Equal("/workspace/review.md"),
-						"watch-report step must reference /workspace/review.md")
+					Expect(step.ReportFile).To(Equal("/workspace/artifacts/review.md"),
+						"watch-report step must reference /workspace/artifacts/review.md")
 					found = true
 				}
 			}
@@ -140,7 +140,7 @@ var _ = Describe("Sample Pipeline for PR review", func() {
 		})
 	})
 
-	Context("Pipeline prompt template references PRDiff and writes review.md", func() {
+	Context("Pipeline prompt template references pr-diff.txt and writes review.md", func() {
 		var pipeline aiv1alpha1.Pipeline
 
 		BeforeEach(func() {
@@ -149,30 +149,30 @@ var _ = Describe("Sample Pipeline for PR review", func() {
 			Expect(yaml.UnmarshalStrict(data, &pipeline)).To(Succeed())
 		})
 
-		It("should have at least one AI step with a promptTemplate containing PRDiff", func() {
+		It("should have at least one AI step with a promptTemplate referencing the diff file", func() {
 			var found bool
 			for _, step := range pipeline.Spec.Steps {
 				if step.Type == "ai" && step.PromptTemplate != "" {
-					if strings.Contains(step.PromptTemplate, "{{.PRDiff}}") {
+					if strings.Contains(step.PromptTemplate, "pr-diff.txt") {
 						found = true
 						break
 					}
 				}
 			}
-			Expect(found).To(BeTrue(), "at least one AI step must reference {{.PRDiff}} in its promptTemplate")
+			Expect(found).To(BeTrue(), "at least one AI step must reference pr-diff.txt in its promptTemplate")
 		})
 
-		It("should instruct writing /workspace/review.md", func() {
+		It("should instruct writing /workspace/artifacts/review.md", func() {
 			var found bool
 			for _, step := range pipeline.Spec.Steps {
 				if step.Type == "ai" && step.PromptTemplate != "" {
-					if strings.Contains(step.PromptTemplate, "/workspace/review.md") {
+					if strings.Contains(step.PromptTemplate, "/workspace/artifacts/review.md") {
 						found = true
 						break
 					}
 				}
 			}
-			Expect(found).To(BeTrue(), "at least one AI step must instruct writing /workspace/review.md")
+			Expect(found).To(BeTrue(), "at least one AI step must instruct writing /workspace/artifacts/review.md")
 		})
 	})
 

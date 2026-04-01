@@ -5,7 +5,6 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
-	"io"
 	"net/http"
 	"strings"
 
@@ -192,39 +191,6 @@ func FetchGitHubReviewRequests(ctx context.Context, spec *aiv1alpha1.GitHubPRRev
 		}
 	}
 	return issues, nil
-}
-
-// maxDiffSize is the maximum size of a PR diff to avoid prompt overflow.
-const maxDiffSize = 100 * 1024 // 100KB
-
-// FetchGitHubPRDiff fetches the diff for a GitHub pull request.
-// It truncates the result to maxDiffSize bytes.
-func FetchGitHubPRDiff(ctx context.Context, baseURL, owner, repo string, number int, token string) (string, error) {
-	url := fmt.Sprintf("%s/repos/%s/%s/pulls/%d", baseURL, owner, repo, number)
-
-	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
-	if err != nil {
-		return "", err
-	}
-	req.Header.Set("Accept", "application/vnd.github.diff")
-	req.Header.Set("Authorization", "Bearer "+token)
-
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		return "", err
-	}
-	defer resp.Body.Close() //nolint:errcheck
-
-	if resp.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("github api returned %d", resp.StatusCode)
-	}
-
-	buf := make([]byte, maxDiffSize+1)
-	n, _ := io.ReadFull(resp.Body, buf)
-	if n > maxDiffSize {
-		n = maxDiffSize
-	}
-	return string(buf[:n]), nil
 }
 
 // FlattenADF extracts plain text from Jira's Atlassian Document Format.

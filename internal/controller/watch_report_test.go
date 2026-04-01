@@ -98,7 +98,7 @@ var _ = Describe("watch-report step type", func() {
 			step := &aiv1alpha1.StepSpec{
 				Name:       "show-review",
 				Type:       "watch-report",
-				ReportFile: "/workspace/review.md",
+				ReportFile: "/workspace/artifacts/review.md",
 			}
 
 			job := buildTestJob(run, step)
@@ -111,14 +111,14 @@ var _ = Describe("watch-report step type", func() {
 			Expect(container.Name).To(Equal("report"))
 			Expect(container.Image).To(Equal(readerImage))
 			Expect(container.Command).To(Equal([]string{"/bin/sh", "-c"}))
-			Expect(container.Args).To(Equal([]string{"cat /workspace/review.md"}))
+			Expect(container.Args).To(Equal([]string{"cat /workspace/artifacts/review.md"}))
 		})
 
 		It("should mount the workspace volume", func() {
 			step := &aiv1alpha1.StepSpec{
 				Name:       "show-review",
 				Type:       "watch-report",
-				ReportFile: "/workspace/review.md",
+				ReportFile: "/workspace/artifacts/review.md",
 			}
 
 			job := buildTestJob(run, step)

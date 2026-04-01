@@ -78,7 +78,7 @@ spec:
         Tests have already been written for this task. Make the changes to satisfy the
         requirements and make the tests pass.
 
-        If the file `/workspace/.test-failures.md` exists, read it first — it contains the output
+        If the file `/workspace/artifacts/test-failures.md` exists, read it first — it contains the output
         from a previous test run that failed. Use it to understand exactly what is broken and fix it.
 
         Do NOT modify the test files.
@@ -87,7 +87,7 @@ spec:
     - name: test
       type: ai
       dind: true
-      failureFile: /workspace/.test-failures.md
+      failureFile: /workspace/artifacts/test-failures.md
       onFailure: implement
       maxRetries: 3
       promptTemplate: |
@@ -117,9 +117,9 @@ spec:
         causing spurious failures. Use flags like `go test -p 1` (Go), `--runInBand` (Jest), or
         equivalent sequential options for your test runner.
 
-        If ALL tests pass, make sure `/workspace/.test-failures.md` does NOT exist (delete it if present).
+        If ALL tests pass, make sure `/workspace/artifacts/test-failures.md` does NOT exist (delete it if present).
 
-        If ANY test fails, write a detailed failure report to `/workspace/.test-failures.md` containing:
+        If ANY test fails, write a detailed failure report to `/workspace/artifacts/test-failures.md` containing:
         - The exact commands that were run
         - The full error output
         - Which tests failed and why

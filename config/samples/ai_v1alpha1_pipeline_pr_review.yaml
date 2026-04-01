@@ -24,11 +24,17 @@ spec:
     - name: review
       type: ai
       promptTemplate: |
-        You are a code reviewer. Review the following PR diff carefully and write
+        You are a code reviewer. Review the following PR carefully and write
         a detailed, actionable review report.
 
-        PR Diff:
-        {{.PRDiff}}
+        PR Title: {{.PRTitle}}
+
+        PR Description:
+        {{.PRBody}}
+
+        The PR diff is saved at /workspace/artifacts/pr-diff.txt — read it to understand
+        what changed. The full repository is checked out at /workspace if you need to
+        inspect surrounding context, but base your review strictly on the diff.
 
         IMPORTANT: For every finding, reference the exact file path and line number(s)
         from the diff using the format `path/to/file.go:42` or `path/to/file.go:42-50`
@@ -36,7 +42,7 @@ spec:
         without switching context. The line numbers in the diff hunk headers
         (`@@ -old,count +new,count @@`) give you the information you need.
 
-        Write your review to /workspace/review.md following this format:
+        Write your review to /workspace/artifacts/review.md following this format:
 
         # Code Review
 
@@ -64,4 +70,4 @@ spec:
 
     - name: show-review
       type: watch-report
-      reportFile: /workspace/review.md
+      reportFile: /workspace/artifacts/review.md

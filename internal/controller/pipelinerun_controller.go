@@ -52,7 +52,7 @@ const (
 	workspacePath  = "/workspace"
 	promptPath     = "/tmp/prompt"
 	pvcStorageSize = "1Gi"
-	triageFile     = "/workspace/.triage.json"
+	triageFile     = "/workspace/artifacts/triage.json"
 )
 
 // PipelineRunReconciler reconciles a PipelineRun object.
@@ -446,6 +446,12 @@ func (r *PipelineRunReconciler) reconcileDeleting(ctx context.Context, run *aiv1
 		}
 	}
 
+	// Delete artifacts pod if it exists
+	artifactsPodName := run.Name + "-artifacts"
+	if err := r.Clientset.CoreV1().Pods(run.Namespace).Delete(ctx, artifactsPodName, metav1.DeleteOptions{}); err != nil && !apierrors.IsNotFound(err) {
+		log.Error(err, "failed to delete artifacts pod", "pod", artifactsPodName)
+	}
+
 	// Delete the PVC if it exists
 	if run.Status.PVCName != "" {
 		err := r.Clientset.CoreV1().PersistentVolumeClaims(run.Namespace).Delete(ctx, run.Status.PVCName, metav1.DeleteOptions{})
@@ -655,7 +661,7 @@ func (r *PipelineRunReconciler) createDiffJob(ctx context.Context, run *aiv1alph
 
 	var backoffLimit int32 = 0
 	script := fmt.Sprintf(
-		`cd %s && git config --global --add safe.directory %s && git add -A && git diff --cached --no-color HEAD -- ':!.test-failures.md'`,
+		`cd %s && git config --global --add safe.directory %s && git add -A && git diff --cached --no-color HEAD -- ':!artifacts/'`,
 		workspacePath, workspacePath,
 	)
 
@@ -898,19 +904,28 @@ func (r *PipelineRunReconciler) configureCheckoutPRJob(_ context.Context, job *b
 
 	trigger := pipeline.Spec.Trigger.GitHubPRReview
 
+	baseBranch := run.Spec.BaseBranch
+	if baseBranch == "" {
+		baseBranch = "main"
+	}
+
 	script := fmt.Sprintf(`set -e
 rm -rf %s/* %s/.[!.]*
 git clone https://x-access-token:${GITHUB_TOKEN}@github.com/%s/%s.git %s
 cd %s
 git fetch origin refs/pull/%d/head
 git checkout FETCH_HEAD
+mkdir -p %s/artifacts
+git diff origin/%s...HEAD > %s/artifacts/pr-diff.txt
 git remote set-url origin https://github.com/%s/%s.git
 chown -R 1000:1000 %s
-echo "checked out PR #%d head (credentials stripped)"`,
+echo "checked out PR #%d head (diff saved to artifacts/pr-diff.txt, credentials stripped)"`,
 		workspacePath, workspacePath,
 		trigger.Owner, trigger.Repo, workspacePath,
 		workspacePath,
 		run.Spec.PRNumber,
+		workspacePath,
+		baseBranch, workspacePath,
 		trigger.Owner, trigger.Repo,
 		workspacePath,
 		run.Spec.PRNumber)
