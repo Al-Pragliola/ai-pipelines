@@ -1964,7 +1964,7 @@ func (s *Server) handleViewArtifact(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
-	w.Write(stdout.Bytes())
+	_, _ = w.Write(stdout.Bytes())
 }
 
 func writeJSON(w http.ResponseWriter, v any) {
