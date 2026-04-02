@@ -1133,31 +1133,44 @@ func (r *PipelineRunReconciler) configureAIJob(_ context.Context, job *batchv1.J
 	// If the step has a workflowRef, prepend a git clone init container
 	if step.WorkflowRef != nil {
 		wf := step.WorkflowRef
-		ref := wf.Ref
-		if ref == "" {
-			ref = "HEAD"
-		}
 
-		// Add temp volume for the workflow clone
-		job.Spec.Template.Spec.Volumes = append(job.Spec.Template.Spec.Volumes, corev1.Volume{
-			Name:         "workflow-tmp",
-			VolumeSource: corev1.VolumeSource{EmptyDir: &corev1.EmptyDirVolumeSource{}},
-		})
+		// Add temp volume for the workflow clone and a shared home volume
+		// so workflow files (.claude/, .ambient/, CLAUDE.md) are visible
+		// to the AI container without polluting the git working tree.
+		job.Spec.Template.Spec.Volumes = append(job.Spec.Template.Spec.Volumes,
+			corev1.Volume{
+				Name:         "workflow-tmp",
+				VolumeSource: corev1.VolumeSource{EmptyDir: &corev1.EmptyDirVolumeSource{}},
+			},
+			corev1.Volume{
+				Name:         "ai-home",
+				VolumeSource: corev1.VolumeSource{EmptyDir: &corev1.EmptyDirVolumeSource{}},
+			},
+		)
 
 		// Build the clone + copy script
+		cloneCmd := "git clone --depth 1"
+		if wf.Ref != "" {
+			cloneCmd += fmt.Sprintf(" --single-branch --branch %s", wf.Ref)
+		}
+		cloneCmd += fmt.Sprintf(" https://x-access-token:${GITHUB_TOKEN}@github.com/%s.git /tmp/workflow", wf.Repo)
+
+		const aiHome = "/ai-home"
 		cloneScript := fmt.Sprintf(`set -e
-git clone --depth 1 --single-branch --branch %s https://x-access-token:${GITHUB_TOKEN}@github.com/%s.git /tmp/workflow
+%s
 cd /tmp/workflow/%s
-# Copy .claude/ directory (merge, no clobber)
-if [ -d .claude ]; then cp -rn .claude %s/; fi
-# Copy .ambient/ directory (merge, no clobber)
+# Copy workflow files to $HOME/.claude/ so Claude Code discovers them
+# as user-level config, without polluting the git working tree.
+mkdir -p %s/.claude
+if [ -d .claude ]; then cp -rn .claude/. %s/.claude/; fi
 if [ -d .ambient ]; then cp -rn .ambient %s/; fi
-# Copy CLAUDE.md only if it does not already exist in the workspace
-if [ -f CLAUDE.md ] && [ ! -f %s/CLAUDE.md ]; then cp CLAUDE.md %s/; fi
+# Claude reads user-level instructions from $HOME/.claude/CLAUDE.md
+if [ -f CLAUDE.md ] && [ ! -f %s/.claude/CLAUDE.md ]; then cp CLAUDE.md %s/.claude/; fi
 `,
-			ref, wf.Repo, wf.Path,
-			workspacePath, workspacePath,
-			workspacePath, workspacePath)
+			cloneCmd, wf.Path,
+			aiHome,
+			aiHome, aiHome,
+			aiHome, aiHome)
 
 		secretRef := r.resolveWorkflowSecretRef(step, pipeline)
 		job.Spec.Template.Spec.InitContainers = append(job.Spec.Template.Spec.InitContainers, corev1.Container{
@@ -1168,6 +1181,7 @@ if [ -f CLAUDE.md ] && [ ! -f %s/CLAUDE.md ]; then cp CLAUDE.md %s/; fi
 			VolumeMounts: []corev1.VolumeMount{
 				{Name: "workspace", MountPath: workspacePath},
 				{Name: "workflow-tmp", MountPath: "/tmp/workflow"},
+				{Name: "ai-home", MountPath: aiHome},
 			},
 			Env: []corev1.EnvVar{
 				{
@@ -1183,6 +1197,20 @@ if [ -f CLAUDE.md ] && [ ! -f %s/CLAUDE.md ]; then cp CLAUDE.md %s/; fi
 				},
 			},
 		})
+
+		// Mount the shared home volume into the AI container and update HOME
+		// so Claude discovers the workflow files there instead of /tmp.
+		aiContainer := &job.Spec.Template.Spec.Containers[0]
+		aiContainer.VolumeMounts = append(aiContainer.VolumeMounts, corev1.VolumeMount{
+			Name:      "ai-home",
+			MountPath: aiHome,
+		})
+		for i, e := range aiContainer.Env {
+			if e.Name == "HOME" {
+				aiContainer.Env[i].Value = aiHome
+				break
+			}
+		}
 	}
 
 	return nil
