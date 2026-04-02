@@ -19,6 +19,8 @@ package controller
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -54,6 +56,22 @@ const (
 	pvcStorageSize = "1Gi"
 	triageFile     = "/workspace/artifacts/triage.json"
 )
+
+// maxLabelLen is the maximum length for a Kubernetes label value.
+const maxLabelLen = 63
+
+// truncateJobName ensures a job name fits within Kubernetes label value limits.
+// K8s automatically sets a "job-name" label on pod templates equal to the Job name;
+// label values are capped at 63 characters. If the name exceeds 63 chars, it is
+// truncated and suffixed with an 8-char hash for uniqueness.
+func truncateJobName(name string) string {
+	if len(name) <= maxLabelLen {
+		return name
+	}
+	hash := sha256.Sum256([]byte(name))
+	suffix := hex.EncodeToString(hash[:4])
+	return name[:maxLabelLen-len(suffix)-1] + "-" + suffix
+}
 
 // PipelineRunReconciler reconciles a PipelineRun object.
 type PipelineRunReconciler struct {
@@ -209,7 +227,7 @@ func (r *PipelineRunReconciler) reconcileRunning(ctx context.Context, run *aiv1a
 	if attempt == 0 {
 		attempt = 1
 	}
-	jobName := fmt.Sprintf("%s-%s-%d", run.Name, stepSpec.Name, attempt)
+	jobName := truncateJobName(fmt.Sprintf("%s-%s-%d", run.Name, stepSpec.Name, attempt))
 
 	var job batchv1.Job
 	err := r.Get(ctx, types.NamespacedName{Name: jobName, Namespace: run.Namespace}, &job)
@@ -655,7 +673,7 @@ func (r *PipelineRunReconciler) resolveRepoInfo(pipeline *aiv1alpha1.Pipeline, r
 // --- Diff preview ---
 
 func (r *PipelineRunReconciler) createDiffJob(ctx context.Context, run *aiv1alpha1.PipelineRun) (string, error) {
-	jobName := run.Name + "-diff-preview"
+	jobName := truncateJobName(run.Name + "-diff-preview")
 
 	// Idempotent: skip if already exists
 	var existing batchv1.Job
@@ -761,7 +779,7 @@ func (r *PipelineRunReconciler) ensurePVC(ctx context.Context, run *aiv1alpha1.P
 }
 
 func (r *PipelineRunReconciler) buildJob(ctx context.Context, run *aiv1alpha1.PipelineRun, pipeline *aiv1alpha1.Pipeline, step *aiv1alpha1.StepSpec, attempt int) (*batchv1.Job, error) {
-	jobName := fmt.Sprintf("%s-%s-%d", run.Name, step.Name, attempt)
+	jobName := truncateJobName(fmt.Sprintf("%s-%s-%d", run.Name, step.Name, attempt))
 	var backoffLimit int32 = 0
 
 	job := &batchv1.Job{
