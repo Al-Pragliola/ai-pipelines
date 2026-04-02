@@ -1131,7 +1131,7 @@ func (r *PipelineRunReconciler) configureAIJob(_ context.Context, job *batchv1.J
 		)
 
 		// Build the clone + copy script
-		cloneCmd := fmt.Sprintf("git clone --depth 1")
+		cloneCmd := "git clone --depth 1"
 		if wf.Ref != "" {
 			cloneCmd += fmt.Sprintf(" --single-branch --branch %s", wf.Ref)
 		}
