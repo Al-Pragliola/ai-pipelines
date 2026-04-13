@@ -1020,10 +1020,34 @@ func (r *PipelineRunReconciler) configureAIJob(_ context.Context, job *batchv1.J
 	for k, v := range pipeline.Spec.AI.Env {
 		envVars = append(envVars, corev1.EnvVar{Name: k, Value: v})
 	}
+	// Merge step-level env vars (override global AI env via last-write-wins)
+	envVars = append(envVars, step.Env...)
 
 	// Volume mounts: workspace + optional credentials
 	volumeMounts := []corev1.VolumeMount{
 		{Name: "workspace", MountPath: workspacePath},
+	}
+
+	// Mount step-level secrets as files
+	for i, sm := range step.SecretMounts {
+		volName := fmt.Sprintf("secret-mount-%d", i)
+		job.Spec.Template.Spec.Volumes = append(job.Spec.Template.Spec.Volumes, corev1.Volume{
+			Name: volName,
+			VolumeSource: corev1.VolumeSource{
+				Secret: &corev1.SecretVolumeSource{
+					SecretName: sm.SecretName,
+				},
+			},
+		})
+		vm := corev1.VolumeMount{
+			Name:      volName,
+			MountPath: sm.MountPath,
+			ReadOnly:  true,
+		}
+		if sm.Key != "" {
+			vm.SubPath = sm.Key
+		}
+		volumeMounts = append(volumeMounts, vm)
 	}
 
 	if pipeline.Spec.AI.SecretRef != nil {
@@ -1243,16 +1267,39 @@ func (r *PipelineRunReconciler) configureShellJob(job *batchv1.Job, step *aiv1al
 
 	script := strings.Join(step.Commands, " && ")
 
+	volumeMounts := make([]corev1.VolumeMount, 1, 1+len(step.SecretMounts))
+	volumeMounts[0] = corev1.VolumeMount{Name: "workspace", MountPath: workspacePath}
+
+	for i, sm := range step.SecretMounts {
+		volName := fmt.Sprintf("secret-mount-%d", i)
+		job.Spec.Template.Spec.Volumes = append(job.Spec.Template.Spec.Volumes, corev1.Volume{
+			Name: volName,
+			VolumeSource: corev1.VolumeSource{
+				Secret: &corev1.SecretVolumeSource{
+					SecretName: sm.SecretName,
+				},
+			},
+		})
+		vm := corev1.VolumeMount{
+			Name:      volName,
+			MountPath: sm.MountPath,
+			ReadOnly:  true,
+		}
+		if sm.Key != "" {
+			vm.SubPath = sm.Key
+		}
+		volumeMounts = append(volumeMounts, vm)
+	}
+
 	job.Spec.Template.Spec.Containers = []corev1.Container{
 		{
-			Name:       "shell",
-			Image:      image,
-			Command:    []string{"/bin/sh", "-c"},
-			Args:       []string{script},
-			WorkingDir: workspacePath,
-			VolumeMounts: []corev1.VolumeMount{
-				{Name: "workspace", MountPath: workspacePath},
-			},
+			Name:         "shell",
+			Image:        image,
+			Command:      []string{"/bin/sh", "-c"},
+			Args:         []string{script},
+			WorkingDir:   workspacePath,
+			Env:          step.Env,
+			VolumeMounts: volumeMounts,
 		},
 	}
 }
