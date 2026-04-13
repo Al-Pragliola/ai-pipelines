@@ -168,12 +168,8 @@ kind-secrets: ## Create K8s secrets for GitHub token and AI credentials.
 		echo "SKIP: Jira credentials not found at $(JIRA_TOKEN_FILE) and JIRA_TOKEN not set (optional)"; \
 	fi
 
-.PHONY: kind-apply-sample
-kind-apply-sample: ## Apply the sample Pipeline CR.
-	kubectl apply -f config/samples/ai_v1alpha1_pipeline.yaml
-
 .PHONY: kind-setup
-kind-setup: kind-up kind-load-image kind-secrets kind-apply-sample ## Full Kind setup: cluster, image, secrets, sample CR.
+kind-setup: kind-up kind-load-image kind-secrets ## Full Kind setup: cluster, image, secrets.
 	@echo ""
 	@echo "Kind cluster '$(KIND_CLUSTER)' is ready."
 	@echo "Run 'make run' to start the controller."
