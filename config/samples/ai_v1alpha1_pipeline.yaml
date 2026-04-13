@@ -140,6 +140,24 @@ spec:
         Do NOT modify any source code — only run tests and report results.
         Do NOT run git add, git commit, or git push.
 
+    - name: lint
+      type: shell
+      image: "golangci/golangci-lint:v1.57"
+      commands:
+        - "golangci-lint run ./..."
+      env:
+        - name: GOLANGCI_LINT_CACHE
+          value: "/tmp/lint-cache"
+        - name: REGISTRY_TOKEN
+          valueFrom:
+            secretKeyRef:
+              name: registry-creds
+              key: token
+      secretMounts:
+        - secretName: npm-auth
+          mountPath: /root/.npmrc
+          key: .npmrc
+
     - name: push
       type: git-push
       requireApproval: true

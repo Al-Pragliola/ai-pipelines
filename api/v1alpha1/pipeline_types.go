@@ -194,6 +194,23 @@ type SecretKeyRef struct {
 	Key string `json:"key,omitempty"`
 }
 
+// SecretMount mounts a K8s Secret (or a single key from it) as a file.
+type SecretMount struct {
+	// secretName is the name of the Secret to mount.
+	// +required
+	SecretName string `json:"secretName"`
+
+	// mountPath is the absolute path where the secret will be mounted.
+	// +required
+	MountPath string `json:"mountPath"`
+
+	// key optionally selects a single key from the Secret.
+	// When set, only that key is mounted as a file at mountPath.
+	// When omitted, all keys are mounted as files in a directory at mountPath.
+	// +optional
+	Key string `json:"key,omitempty"`
+}
+
 // AISpec configures the AI container runtime.
 type AISpec struct {
 	// image is the container image for AI steps (e.g. "ai-pipelines-claude:latest").
@@ -272,6 +289,16 @@ type StepSpec struct {
 	// image overrides the default image for this step (shell only).
 	// +optional
 	Image string `json:"image,omitempty"`
+
+	// env is a list of environment variables for this step's container.
+	// Supports plain values and valueFrom (secretKeyRef, configMapKeyRef, etc.).
+	// For AI steps, these are merged with (and override) spec.ai.env.
+	// +optional
+	Env []corev1.EnvVar `json:"env,omitempty"`
+
+	// secretMounts mounts K8s Secrets as files into this step's container.
+	// +optional
+	SecretMounts []SecretMount `json:"secretMounts,omitempty"`
 
 	// dind enables a Docker-in-Docker sidecar for this step.
 	// Allows running docker, kind, and container-based tests.
