@@ -113,12 +113,16 @@ JIRA_EMAIL_FILE ?= $(HOME)/.jira/email
 
 .PHONY: kind-up
 kind-up: ## Create a Kind cluster and install CRDs.
+	@mkdir -p .data/velero-backups
 	@case "$$($(KIND) get clusters 2>/dev/null)" in \
 		*"$(KIND_CLUSTER)"*) \
 			echo "Kind cluster '$(KIND_CLUSTER)' already exists." ;; \
 		*) \
 			echo "Creating Kind cluster '$(KIND_CLUSTER)'..."; \
-			$(KIND) create cluster --name $(KIND_CLUSTER) --config hack/kind-config.yaml ;; \
+			tmp=$$(mktemp) && \
+			sed 's|__VELERO_BACKUP_PATH__|$(CURDIR)/.data/velero-backups|' hack/kind-config.yaml > "$$tmp" && \
+			$(KIND) create cluster --name $(KIND_CLUSTER) --config "$$tmp"; \
+			rm -f "$$tmp" ;; \
 	esac
 	@kubectl config use-context kind-$(KIND_CLUSTER) >/dev/null 2>&1 || true
 	$(MAKE) install
@@ -175,12 +179,46 @@ kind-setup: kind-up kind-load-image kind-secrets ## Full Kind setup: cluster, im
 	@echo "Run 'make run' to start the controller."
 
 .PHONY: kind-down
-kind-down: ## Delete the Kind cluster.
+kind-down: ## Take a final backup, then delete the Kind cluster.
+	@if [ -f "$(VELERO)" ] && kubectl get deployment velero -n velero &>/dev/null; then \
+		echo "Taking final backup before cluster deletion..."; \
+		$(VELERO) backup create "pre-delete-$$(date +%Y%m%d-%H%M%S)" --wait || \
+			echo "Warning: backup failed (cluster may be unhealthy). Existing backups on disk are unaffected."; \
+	fi
 	$(KIND) delete cluster --name $(KIND_CLUSTER)
 
 .PHONY: kind-reset
 kind-reset: ## Delete all PipelineRuns (fresh test run).
 	kubectl delete pipelineruns --all
+
+##@ Velero (cluster backup/restore)
+
+.PHONY: velero-setup
+velero-setup: velero-cli ## Deploy MinIO + Velero and create hourly backup schedule.
+	@mkdir -p .data/velero-backups
+	VELERO="$(VELERO)" VELERO_AWS_PLUGIN="velero/velero-plugin-for-aws:$(VELERO_AWS_PLUGIN_VERSION)" \
+		bash hack/velero/setup.sh
+
+.PHONY: velero-backup
+velero-backup: velero-cli ## Create an on-demand backup now.
+	@name="manual-$$(date +%Y%m%d-%H%M%S)"; \
+	$(VELERO) backup create "$$name" --wait; \
+	status=$$($(VELERO) backup get "$$name" -o json | jq -r '.status.phase'); \
+	if [ "$$status" = "Completed" ]; then \
+		echo "Backup '$$name' completed successfully."; \
+	else \
+		echo "ERROR: Backup '$$name' finished with status: $$status" >&2; \
+		echo "Run: $(VELERO) backup logs $$name" >&2; \
+		exit 1; \
+	fi
+
+.PHONY: velero-restore
+velero-restore: velero-cli ## Restore from the latest backup.
+	VELERO="$(VELERO)" bash hack/velero/restore.sh
+
+.PHONY: velero-list
+velero-list: velero-cli ## List all Velero backups.
+	$(VELERO) backup get
 
 ##@ Dashboard
 
@@ -283,10 +321,13 @@ KUSTOMIZE ?= $(LOCALBIN)/kustomize
 CONTROLLER_GEN ?= $(LOCALBIN)/controller-gen
 ENVTEST ?= $(LOCALBIN)/setup-envtest
 GOLANGCI_LINT = $(LOCALBIN)/golangci-lint
+VELERO ?= $(LOCALBIN)/velero
 
 ## Tool Versions
 KUSTOMIZE_VERSION ?= v5.8.1
 CONTROLLER_TOOLS_VERSION ?= v0.20.1
+VELERO_VERSION ?= v1.15.0
+VELERO_AWS_PLUGIN_VERSION ?= v1.11.0
 
 #ENVTEST_VERSION is the version of controller-runtime release branch to fetch the envtest setup script (i.e. release-0.20)
 ENVTEST_VERSION ?= $(shell v='$(call gomodver,sigs.k8s.io/controller-runtime)'; \
@@ -331,6 +372,17 @@ $(GOLANGCI_LINT): $(LOCALBIN)
 		$(GOLANGCI_LINT) custom --destination $(LOCALBIN) --name golangci-lint-custom && \
 		mv -f $(LOCALBIN)/golangci-lint-custom $(GOLANGCI_LINT); \
 	} || true
+
+.PHONY: velero-cli
+velero-cli: $(VELERO) ## Download velero CLI locally if necessary.
+$(VELERO): $(LOCALBIN)
+	@[ -f "$(VELERO)" ] || { \
+	echo "Downloading velero $(VELERO_VERSION)..." ; \
+	curl -fsSL "https://github.com/vmware-tanzu/velero/releases/download/$(VELERO_VERSION)/velero-$(VELERO_VERSION)-linux-amd64.tar.gz" | \
+	tar xz -C /tmp && \
+	mv "/tmp/velero-$(VELERO_VERSION)-linux-amd64/velero" "$(VELERO)" && \
+	rm -rf "/tmp/velero-$(VELERO_VERSION)-linux-amd64" ; \
+	}
 
 # go-install-tool will 'go install' any package with custom target and name of binary, if it doesn't exist
 # $1 - target path with name of binary

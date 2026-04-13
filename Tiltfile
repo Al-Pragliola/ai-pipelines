@@ -9,12 +9,23 @@
 # Ignore generated files and local data to prevent feedback loops
 watch_settings(ignore=['config/crd/bases/', 'bin/', 'cmd/dashboard/dist/', '.data/'])
 
+# --- Velero (cluster backup/restore) ---
+# Sets up MinIO + Velero on first run, then restores from the latest backup.
+# Backups live on the host at .data/velero-backups/ and survive cluster deletion.
+local_resource(
+    'velero',
+    cmd='make velero-setup && make velero-restore',
+    auto_init=True,
+    trigger_mode=TRIGGER_MODE_MANUAL,
+)
+
 # --- CRDs ---
 # Re-install CRDs when API types change
 local_resource(
     'crd-install',
     cmd='make install',
     deps=['api/v1alpha1/'],
+    resource_deps=['velero'],
 )
 
 # --- Pipeline CRs (local/ is gitignored — copy from config/samples/ and fill in your values) ---
