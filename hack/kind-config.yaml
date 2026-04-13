@@ -6,3 +6,6 @@ nodes:
       - |
         kind: KubeletConfiguration
         podMaxPids: -1
+    extraMounts:
+      - hostPath: __VELERO_BACKUP_PATH__
+        containerPath: /var/velero-backups
