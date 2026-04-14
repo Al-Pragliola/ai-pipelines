@@ -441,6 +441,7 @@ export default function RunDetail() {
   const [run, setRun] = useState<PipelineRun | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
+  const [descExpanded, setDescExpanded] = useState(false)
 
   const load = useCallback(async () => {
     try {
@@ -510,10 +511,28 @@ export default function RunDetail() {
               </a>
             </>
           ) : isSpotRun ? (
-            <>
+            <div>
               <span className="text-gray-500">Task:</span>{' '}
-              <span className="text-gray-200">{run.description || 'Spot run'}</span>
-            </>
+              {(() => {
+                const desc = run.description || 'Spot run'
+                const LIMIT = 150
+                if (desc.length <= LIMIT) {
+                  return <span className="text-gray-200">{desc}</span>
+                }
+                return descExpanded ? (
+                  <div className="mt-1">
+                    <pre className="whitespace-pre-wrap text-gray-200 bg-gray-800 rounded p-3 max-h-48 overflow-y-auto text-xs font-sans leading-relaxed">{desc}</pre>
+                    <button onClick={() => setDescExpanded(false)} className="text-indigo-400 hover:text-indigo-300 text-xs mt-1">show less</button>
+                  </div>
+                ) : (
+                  <span>
+                    <span className="text-gray-200">{desc.slice(0, LIMIT)}…</span>
+                    {' '}
+                    <button onClick={() => setDescExpanded(true)} className="text-indigo-400 hover:text-indigo-300 text-xs">show more</button>
+                  </span>
+                )
+              })()}
+            </div>
           ) : (
             <>
               <span className="text-gray-500">Issue:</span>{' '}
