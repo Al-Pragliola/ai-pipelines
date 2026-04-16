@@ -589,6 +589,10 @@ func (r *PipelineRunReconciler) recordCompletion(ctx context.Context, run *aiv1a
 	if r.History == nil {
 		return
 	}
+	// Scheduled runs have no issue to dedup against — skip history
+	if run.Labels["ai.aipipelines.io/trigger-type"] == "schedule" {
+		return
+	}
 	issueKey := run.Spec.IssueKey
 	if issueKey == "" && run.Spec.IssueNumber > 0 {
 		issueKey = fmt.Sprintf("#%d", run.Spec.IssueNumber)

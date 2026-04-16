@@ -33,6 +33,8 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 
+	"github.com/robfig/cron/v3"
+
 	aiv1alpha1 "github.com/Al-Pragliola/ai-pipelines/api/v1alpha1"
 	"github.com/Al-Pragliola/ai-pipelines/internal/issuehistory"
 	"github.com/Al-Pragliola/ai-pipelines/internal/trigger"
@@ -90,6 +92,19 @@ func (r *PipelineReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 	}
 
 	trig := *pipeline.Spec.Trigger
+
+	// Schedule triggers need no secret — handle them separately
+	if trig.Schedule != nil {
+		r.ensurePoller(req.NamespacedName, &pipeline, "", "")
+		pipeline.Status.PollerActive = true
+		if err := r.Status().Update(ctx, &pipeline); err != nil {
+			if apierrors.IsConflict(err) {
+				return ctrl.Result{Requeue: true}, nil
+			}
+			return ctrl.Result{}, err
+		}
+		return ctrl.Result{}, nil
+	}
 
 	// Read trigger credentials from Secret
 	var secretRef aiv1alpha1.SecretKeyRef
@@ -201,6 +216,12 @@ func (r *PipelineReconciler) stopPoller(key types.NamespacedName) {
 
 func (r *PipelineReconciler) runPoller(ctx context.Context, key types.NamespacedName, namespace, pipelineName string, spec *aiv1alpha1.PipelineSpec, token, jiraEmail string) {
 	log := logf.Log.WithName("poller").WithValues("pipeline", key)
+
+	// Schedule triggers use cron-based timing, not a fixed interval
+	if spec.Trigger.Schedule != nil {
+		r.runSchedulePoller(ctx, key, namespace, pipelineName, spec)
+		return
+	}
 
 	var interval time.Duration
 	var err error
@@ -376,6 +397,112 @@ func sanitizeLabelValue(s string) string {
 		s = s[:63]
 	}
 	return s
+}
+
+// --- Schedule trigger ---
+
+func (r *PipelineReconciler) runSchedulePoller(ctx context.Context, key types.NamespacedName, namespace, pipelineName string, spec *aiv1alpha1.PipelineSpec) {
+	log := logf.Log.WithName("schedule-poller").WithValues("pipeline", key)
+
+	parser := cron.NewParser(cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow)
+	sched, err := parser.Parse(spec.Trigger.Schedule.Schedule)
+	if err != nil {
+		log.Error(err, "invalid cron expression", "schedule", spec.Trigger.Schedule.Schedule)
+		return
+	}
+
+	prompt := spec.Trigger.Schedule.Prompt
+	log.Info("starting schedule poller", "schedule", spec.Trigger.Schedule.Schedule)
+
+	for {
+		now := time.Now()
+		next := sched.Next(now)
+		delay := time.Until(next)
+		log.Info("next scheduled run", "at", next, "in", delay)
+
+		select {
+		case <-ctx.Done():
+			log.Info("schedule poller stopped")
+			return
+		case <-time.After(delay):
+		}
+
+		hasActive, err := r.hasActiveScheduledRun(ctx, namespace, pipelineName)
+		if err != nil {
+			if ctx.Err() != nil {
+				return
+			}
+			log.Error(err, "failed to check active scheduled runs")
+			continue
+		}
+		if hasActive {
+			log.Info("skipping scheduled run — previous run still active")
+			continue
+		}
+
+		log.Info("creating scheduled PipelineRun")
+		if err := r.createScheduledPipelineRun(ctx, namespace, pipelineName, key, prompt); err != nil {
+			if ctx.Err() != nil {
+				return
+			}
+			log.Error(err, "failed to create scheduled PipelineRun")
+		}
+
+		// Update lastPollTime
+		var pipeline aiv1alpha1.Pipeline
+		if err := r.Get(ctx, key, &pipeline); err == nil {
+			now := metav1.Now()
+			pipeline.Status.LastPollTime = &now
+			_ = r.Status().Update(ctx, &pipeline)
+		}
+	}
+}
+
+func (r *PipelineReconciler) hasActiveScheduledRun(ctx context.Context, namespace, pipelineName string) (bool, error) {
+	var runs aiv1alpha1.PipelineRunList
+	if err := r.List(ctx, &runs, client.InNamespace(namespace), client.MatchingLabels{
+		"ai.aipipelines.io/pipeline":     pipelineName,
+		"ai.aipipelines.io/trigger-type": "schedule",
+	}); err != nil {
+		return false, err
+	}
+	for _, run := range runs.Items {
+		phase := run.Status.Phase
+		if phase != aiv1alpha1.PipelineRunPhaseSucceeded &&
+			phase != aiv1alpha1.PipelineRunPhaseFailed &&
+			phase != aiv1alpha1.PipelineRunPhaseStopped {
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
+func (r *PipelineReconciler) createScheduledPipelineRun(ctx context.Context, namespace, pipelineName string, pipelineKey types.NamespacedName, prompt string) error {
+	var pipeline aiv1alpha1.Pipeline
+	if err := r.Get(ctx, pipelineKey, &pipeline); err != nil {
+		return err
+	}
+
+	run := &aiv1alpha1.PipelineRun{
+		ObjectMeta: metav1.ObjectMeta{
+			GenerateName: fmt.Sprintf("%s-sched-", pipelineName),
+			Namespace:    namespace,
+			Labels: map[string]string{
+				"ai.aipipelines.io/pipeline":     pipelineName,
+				"ai.aipipelines.io/trigger-type": "schedule",
+			},
+		},
+		Spec: aiv1alpha1.PipelineRunSpec{
+			PipelineRef: pipelineName,
+			Description: prompt,
+		},
+	}
+
+	if err := controllerutil.SetControllerReference(&pipeline, run, r.Scheme); err != nil {
+		return fmt.Errorf("setting owner reference: %w", err)
+	}
+
+	return r.Create(ctx, run)
 }
 
 // SetupWithManager sets up the controller with the Manager.

@@ -104,6 +104,22 @@ type TriggerSpec struct {
 	// githubPRReview configures GitHub PR review polling.
 	// +optional
 	GitHubPRReview *GitHubPRReviewTriggerSpec `json:"githubPRReview,omitempty"`
+
+	// schedule configures cron-based scheduled runs.
+	// +optional
+	Schedule *ScheduleTriggerSpec `json:"schedule,omitempty"`
+}
+
+// ScheduleTriggerSpec configures cron-based scheduled triggers.
+type ScheduleTriggerSpec struct {
+	// schedule is a cron expression (e.g. "0 0 * * 0" for weekly Sunday midnight).
+	// Uses standard 5-field cron syntax (minute, hour, day-of-month, month, day-of-week).
+	// +required
+	Schedule string `json:"schedule"`
+
+	// prompt is the task description for each scheduled run.
+	// +required
+	Prompt string `json:"prompt"`
 }
 
 // GitHubPRReviewTriggerSpec configures GitHub PR review trigger.
