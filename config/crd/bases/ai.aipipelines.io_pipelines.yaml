@@ -600,6 +600,22 @@ spec:
                     - secretRef
                     - url
                     type: object
+                  schedule:
+                    description: schedule configures cron-based scheduled runs.
+                    properties:
+                      prompt:
+                        description: prompt is the task description for each scheduled
+                          run.
+                        type: string
+                      schedule:
+                        description: |-
+                          schedule is a cron expression (e.g. "0 0 * * 0" for weekly Sunday midnight).
+                          Uses standard 5-field cron syntax (minute, hour, day-of-month, month, day-of-week).
+                        type: string
+                    required:
+                    - prompt
+                    - schedule
+                    type: object
                 type: object
             required:
             - ai

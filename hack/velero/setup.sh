@@ -16,6 +16,7 @@ kubectl wait --for=condition=available deployment/minio -n velero --timeout=120s
 
 # 2. Create the "velero" bucket if it doesn't exist
 echo "Ensuring 'velero' bucket exists..."
+kubectl -n velero delete pod minio-bucket-init --ignore-not-found
 kubectl -n velero run minio-bucket-init --rm -i --restart=Never \
     --image=minio/mc:latest --command -- \
     sh -c 'until mc alias set minio http://minio:9000 minioadmin minioadmin 2>/dev/null; do sleep 1; done; mc mb --ignore-existing minio/velero'

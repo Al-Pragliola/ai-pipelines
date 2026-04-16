@@ -100,6 +100,82 @@ var _ = Describe("Pipeline Controller", func() {
 		})
 	})
 
+	Context("When reconciling a schedule-triggered pipeline", func() {
+		const scheduleName = "test-schedule-pipeline"
+
+		ctx := context.Background()
+
+		scheduleKey := types.NamespacedName{
+			Name:      scheduleName,
+			Namespace: "default",
+		}
+
+		BeforeEach(func() {
+			resource := &aiv1alpha1.Pipeline{}
+			err := k8sClient.Get(ctx, scheduleKey, resource)
+			if err != nil && errors.IsNotFound(err) {
+				resource = &aiv1alpha1.Pipeline{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      scheduleName,
+						Namespace: "default",
+					},
+					Spec: aiv1alpha1.PipelineSpec{
+						Trigger: &aiv1alpha1.TriggerSpec{
+							Schedule: &aiv1alpha1.ScheduleTriggerSpec{
+								Schedule: "0 0 * * 0",
+								Prompt:   "Run weekly security scan",
+							},
+						},
+						AI: aiv1alpha1.AISpec{
+							Image: "test-image:latest",
+						},
+						Steps: []aiv1alpha1.StepSpec{
+							{
+								Name: "checkout",
+								Type: "git-checkout",
+							},
+						},
+					},
+				}
+				Expect(k8sClient.Create(ctx, resource)).To(Succeed())
+			}
+		})
+
+		AfterEach(func() {
+			resource := &aiv1alpha1.Pipeline{}
+			err := k8sClient.Get(ctx, scheduleKey, resource)
+			Expect(err).NotTo(HaveOccurred())
+
+			reconciler := &PipelineReconciler{
+				Client: k8sClient,
+				Scheme: k8sClient.Scheme(),
+			}
+			reconciler.stopPoller(scheduleKey)
+
+			Expect(k8sClient.Delete(ctx, resource)).To(Succeed())
+		})
+
+		It("should reconcile and set PollerActive without requiring a secret", func() {
+			controllerReconciler := &PipelineReconciler{
+				Client: k8sClient,
+				Scheme: k8sClient.Scheme(),
+			}
+
+			result, err := controllerReconciler.Reconcile(ctx, reconcile.Request{
+				NamespacedName: scheduleKey,
+			})
+			Expect(err).NotTo(HaveOccurred())
+			Expect(result).To(Equal(reconcile.Result{}))
+
+			// Verify poller was started
+			var updated aiv1alpha1.Pipeline
+			Expect(k8sClient.Get(ctx, scheduleKey, &updated)).To(Succeed())
+			Expect(updated.Status.PollerActive).To(BeTrue())
+
+			controllerReconciler.stopPoller(scheduleKey)
+		})
+	})
+
 	Context("When reconciling a spot (triggerless) pipeline", func() {
 		const spotName = "test-spot-pipeline"
 

@@ -50,6 +50,12 @@ func NewServer(frontend fs.FS, history *issuehistory.Store, logFile string) (*Se
 		return nil, fmt.Errorf("loading kubeconfig: %w", err)
 	}
 
+	// The dashboard serves many concurrent API requests (one per pipeline on page load),
+	// each making K8s API calls. The default 5 QPS / 10 burst causes client-side throttling
+	// that snowballs into apparent hangs.
+	cfg.QPS = 50
+	cfg.Burst = 100
+
 	addScheme := aiv1alpha1.SchemeBuilder.SchemeBuilder.AddToScheme
 	k8sClient, err := client.New(cfg, client.Options{})
 	if err != nil {
@@ -232,6 +238,9 @@ func (s *Server) handleListPipelines(w http.ResponseWriter, r *http.Request) {
 				resp.TriggerType = "PR Review"
 				resp.TriggerInfo = fmt.Sprintf("%s/%s (reviewer: %s)", p.Spec.Trigger.GitHubPRReview.Owner, p.Spec.Trigger.GitHubPRReview.Repo, p.Spec.Trigger.GitHubPRReview.Reviewer)
 				resp.PollInterval = p.Spec.Trigger.GitHubPRReview.PollInterval
+			case p.Spec.Trigger.Schedule != nil:
+				resp.TriggerType = "Schedule"
+				resp.TriggerInfo = p.Spec.Trigger.Schedule.Schedule
 			}
 		}
 		out = append(out, resp)
@@ -259,6 +268,8 @@ func (s *Server) handleGetPipeline(w http.ResponseWriter, r *http.Request) {
 			triggerType = "Jira"
 		case pipeline.Spec.Trigger.GitHubPRReview != nil:
 			triggerType = "PR Review"
+		case pipeline.Spec.Trigger.Schedule != nil:
+			triggerType = "Schedule"
 		}
 	}
 
@@ -820,8 +831,8 @@ func (s *Server) handlePendingIssues(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// No trigger — spot-run-only pipeline
-	if pipeline.Spec.Trigger == nil {
+	// No trigger, spot-run-only, or schedule — no pending issues
+	if pipeline.Spec.Trigger == nil || pipeline.Spec.Trigger.Schedule != nil {
 		writeJSON(w, []struct{}{})
 		return
 	}
