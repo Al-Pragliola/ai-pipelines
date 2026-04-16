@@ -23,6 +23,7 @@ import (
 	. "github.com/onsi/gomega"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/types"
+	corev1 "k8s.io/api/core/v1"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -173,6 +174,98 @@ var _ = Describe("Pipeline Controller", func() {
 			Expect(updated.Status.PollerActive).To(BeTrue())
 
 			controllerReconciler.stopPoller(scheduleKey)
+		})
+	})
+
+	Context("When reconciling a githubPR-triggered pipeline", func() {
+		const prPipelineName = "test-github-pr-pipeline"
+
+		ctx := context.Background()
+
+		prKey := types.NamespacedName{
+			Name:      prPipelineName,
+			Namespace: "default",
+		}
+
+		BeforeEach(func() {
+			resource := &aiv1alpha1.Pipeline{}
+			err := k8sClient.Get(ctx, prKey, resource)
+			if err != nil && errors.IsNotFound(err) {
+				// Create the secret the reconciler will read
+				secret := &corev1.Secret{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      "github-pr-token",
+						Namespace: "default",
+					},
+					Data: map[string][]byte{
+						"token": []byte("fake-token"),
+					},
+				}
+				_ = k8sClient.Create(ctx, secret) // ignore AlreadyExists
+
+				resource = &aiv1alpha1.Pipeline{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      prPipelineName,
+						Namespace: "default",
+					},
+					Spec: aiv1alpha1.PipelineSpec{
+						Trigger: &aiv1alpha1.TriggerSpec{
+							GitHubPR: &aiv1alpha1.GitHubPRTriggerSpec{
+								Owner:          "opendatahub-io",
+								Repo:           "model-registry-operator",
+								ExcludeAuthors: []string{"dependabot[bot]"},
+								PollInterval:   "60s",
+								SecretRef: aiv1alpha1.SecretKeyRef{
+									Name: "github-pr-token",
+								},
+							},
+						},
+						AI: aiv1alpha1.AISpec{
+							Image: "test-image:latest",
+						},
+						Steps: []aiv1alpha1.StepSpec{
+							{
+								Name: "checkout-pr",
+								Type: "git-checkout-pr",
+							},
+						},
+					},
+				}
+				Expect(k8sClient.Create(ctx, resource)).To(Succeed())
+			}
+		})
+
+		AfterEach(func() {
+			resource := &aiv1alpha1.Pipeline{}
+			err := k8sClient.Get(ctx, prKey, resource)
+			Expect(err).NotTo(HaveOccurred())
+
+			reconciler := &PipelineReconciler{
+				Client: k8sClient,
+				Scheme: k8sClient.Scheme(),
+			}
+			reconciler.stopPoller(prKey)
+
+			Expect(k8sClient.Delete(ctx, resource)).To(Succeed())
+		})
+
+		It("should reconcile and set PollerActive", func() {
+			controllerReconciler := &PipelineReconciler{
+				Client: k8sClient,
+				Scheme: k8sClient.Scheme(),
+			}
+
+			result, err := controllerReconciler.Reconcile(ctx, reconcile.Request{
+				NamespacedName: prKey,
+			})
+			Expect(err).NotTo(HaveOccurred())
+			Expect(result).To(Equal(reconcile.Result{}))
+
+			var updated aiv1alpha1.Pipeline
+			Expect(k8sClient.Get(ctx, prKey, &updated)).To(Succeed())
+			Expect(updated.Status.PollerActive).To(BeTrue())
+
+			controllerReconciler.stopPoller(prKey)
 		})
 	})
 

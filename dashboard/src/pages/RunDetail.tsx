@@ -240,10 +240,16 @@ function StepApproval({ run, onApproved }: { run: PipelineRun; onApproved: () =>
   const [dialogOpen, setDialogOpen] = useState(false)
   const [chatOpen, setChatOpen] = useState(false)
 
+  const hasDiffJob = !!run.diffJobName
+
   // Fetch diff (re-runs when diffKey changes, e.g. after chat edits)
   const [diffKey, setDiffKey] = useState(0)
   const [refreshing, setRefreshing] = useState(false)
   useEffect(() => {
+    if (!hasDiffJob) {
+      setDiffLoading(false)
+      return
+    }
     let cancelled = false
     let timer: ReturnType<typeof setTimeout>
     let retries = 0
@@ -279,7 +285,7 @@ function StepApproval({ run, onApproved }: { run: PipelineRun; onApproved: () =>
     }
     fetchDiff()
     return () => { cancelled = true; clearTimeout(timer) }
-  }, [run.namespace, run.name, diffKey])
+  }, [run.namespace, run.name, diffKey, hasDiffJob])
 
   const refreshDiff = async () => {
     setRefreshing(true)
@@ -311,6 +317,35 @@ function StepApproval({ run, onApproved }: { run: PipelineRun; onApproved: () =>
   // Diff stats
   const hasDiff = diff && diff.trim() !== ''
   const fileCount = hasDiff ? (diff.match(/^diff --git /gm) ?? []).length : 0
+
+  // Generic approval (no diff job) — simple card
+  if (!hasDiffJob) {
+    return (
+      <div className="bg-orange-500/10 border border-orange-500/30 rounded-lg overflow-hidden">
+        <div className="px-5 pt-5 pb-3">
+          <div className="flex items-center gap-3">
+            <svg className="w-5 h-5 text-orange-400" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m0-10.036A11.959 11.959 0 0 1 3.598 6 11.99 11.99 0 0 0 3 9.75c0 5.592 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.31-.21-2.571-.598-3.75h-.152c-3.196 0-6.1-1.25-8.25-3.286Z" />
+            </svg>
+            <h3 className="text-orange-400 font-medium">Approval required</h3>
+          </div>
+          <p className="mt-2 ml-8 text-sm text-gray-400">
+            Step <code className="text-xs bg-gray-800/50 px-1.5 py-0.5 rounded text-gray-200">{run.currentStep}</code> is waiting for your approval to proceed.
+          </p>
+        </div>
+        {error && <p className="text-red-400 text-sm px-5 pb-2">{error}</p>}
+        <div className="flex items-center px-5 py-3 border-t border-orange-500/20 bg-orange-500/5">
+          <button
+            onClick={approve}
+            disabled={submitting}
+            className="px-5 py-2 rounded-lg bg-green-600 text-white text-sm font-medium hover:bg-green-500 transition-colors disabled:opacity-50"
+          >
+            {submitting ? 'Approving...' : 'Approve'}
+          </button>
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div className="bg-orange-500/10 border border-orange-500/30 rounded-lg overflow-hidden">

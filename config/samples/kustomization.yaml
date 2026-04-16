@@ -2,5 +2,6 @@
 resources:
 - ai_v1alpha1_pipeline.yaml
 - ai_v1alpha1_pipeline_schedule.yaml
+- ai_v1alpha1_pipeline_github_pr.yaml
 - ai_v1alpha1_pipelinerun.yaml
 # +kubebuilder:scaffold:manifestskustomizesamples

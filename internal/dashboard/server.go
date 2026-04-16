@@ -241,6 +241,10 @@ func (s *Server) handleListPipelines(w http.ResponseWriter, r *http.Request) {
 			case p.Spec.Trigger.Schedule != nil:
 				resp.TriggerType = "Schedule"
 				resp.TriggerInfo = p.Spec.Trigger.Schedule.Schedule
+			case p.Spec.Trigger.GitHubPR != nil:
+				resp.TriggerType = "GitHub PR"
+				resp.TriggerInfo = fmt.Sprintf("%s/%s", p.Spec.Trigger.GitHubPR.Owner, p.Spec.Trigger.GitHubPR.Repo)
+				resp.PollInterval = p.Spec.Trigger.GitHubPR.PollInterval
 			}
 		}
 		out = append(out, resp)
@@ -270,6 +274,8 @@ func (s *Server) handleGetPipeline(w http.ResponseWriter, r *http.Request) {
 			triggerType = "PR Review"
 		case pipeline.Spec.Trigger.Schedule != nil:
 			triggerType = "Schedule"
+		case pipeline.Spec.Trigger.GitHubPR != nil:
+			triggerType = "GitHub PR"
 		}
 	}
 
@@ -846,6 +852,8 @@ func (s *Server) handlePendingIssues(w http.ResponseWriter, r *http.Request) {
 		secretRef = pipeline.Spec.Trigger.Jira.SecretRef
 	case pipeline.Spec.Trigger.GitHubPRReview != nil:
 		secretRef = pipeline.Spec.Trigger.GitHubPRReview.SecretRef
+	case pipeline.Spec.Trigger.GitHubPR != nil:
+		secretRef = pipeline.Spec.Trigger.GitHubPR.SecretRef
 	default:
 		writeJSON(w, []struct{}{})
 		return
@@ -876,6 +884,8 @@ func (s *Server) handlePendingIssues(w http.ResponseWriter, r *http.Request) {
 		issues, err = trigger.FetchGitHubIssues(r.Context(), pipeline.Spec.Trigger.GitHub, token, s.githubClient)
 	case pipeline.Spec.Trigger.Jira != nil:
 		issues, err = trigger.FetchJiraIssues(r.Context(), pipeline.Spec.Trigger.Jira, token, jiraEmail)
+	case pipeline.Spec.Trigger.GitHubPR != nil:
+		issues, err = trigger.FetchGitHubPRs(r.Context(), pipeline.Spec.Trigger.GitHubPR, token, s.githubClient)
 	}
 	if err != nil {
 		http.Error(w, fmt.Sprintf("failed to fetch issues: %v", err), http.StatusInternalServerError)
