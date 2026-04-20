@@ -1,0 +1,51 @@
+apiVersion: ai.aipipelines.io/v1alpha1
+kind: Pipeline
+metadata:
+  name: pr-breaking-changes
+  namespace: default
+spec:
+  # GitHub PR trigger — watches for new PRs, excluding bot authors.
+  # Creates a PipelineRun for each new PR opened by a human.
+
+  trigger:
+    githubPR:
+      owner: "opendatahub-io"
+      repo: "model-registry-operator"
+      excludeAuthors:
+        - "dependabot[bot]"
+        - "renovate[bot]"
+      pollInterval: "60s"
+      secretRef:
+        name: github-token
+
+  ai:
+    image: "localhost/ai-pipelines-claude:latest"
+    secretRef:
+      name: ai-credentials
+      key: credentials.json
+    credentialsMountPath: "/tmp/gcp-creds.json"
+    imagePullPolicy: Never
+
+  steps:
+    - name: checkout-pr
+      type: git-checkout-pr
+
+    - name: analyze
+      type: ai
+      promptTemplate: |
+        You are reviewing PR #{{.PRNumber}} by {{.PRAuthor}}.
+
+        PR Title: {{.PRTitle}}
+        PR Description: {{.PRBody}}
+
+        The PR diff is at /workspace/artifacts/pr-diff.txt.
+        The full repo is checked out at /workspace.
+
+        Write your analysis to /workspace/artifacts/analysis.md.
+
+        Do NOT modify any source code.
+        Do NOT run git add, git commit, or git push.
+
+    - name: show-report
+      type: watch-report
+      reportFile: /workspace/artifacts/analysis.md

@@ -108,6 +108,36 @@ type TriggerSpec struct {
 	// schedule configures cron-based scheduled runs.
 	// +optional
 	Schedule *ScheduleTriggerSpec `json:"schedule,omitempty"`
+
+	// githubPR configures GitHub Pull Request polling.
+	// +optional
+	GitHubPR *GitHubPRTriggerSpec `json:"githubPR,omitempty"`
+}
+
+// GitHubPRTriggerSpec configures GitHub PR trigger.
+type GitHubPRTriggerSpec struct {
+	// owner is the GitHub repository owner.
+	// +required
+	Owner string `json:"owner"`
+
+	// repo is the GitHub repository name.
+	// +required
+	Repo string `json:"repo"`
+
+	// excludeAuthors is a list of GitHub usernames whose PRs should be ignored
+	// (e.g. "dependabot[bot]", "renovate[bot]").
+	// +optional
+	ExcludeAuthors []string `json:"excludeAuthors,omitempty"`
+
+	// pollInterval is how often to check for new PRs (e.g. "30s", "5m").
+	// +optional
+	// +kubebuilder:default="60s"
+	PollInterval string `json:"pollInterval,omitempty"`
+
+	// secretRef references a K8s Secret containing the GitHub token.
+	// The secret must have a key named "token".
+	// +required
+	SecretRef SecretKeyRef `json:"secretRef"`
 }
 
 // ScheduleTriggerSpec configures cron-based scheduled triggers.

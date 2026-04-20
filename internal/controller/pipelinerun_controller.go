@@ -238,10 +238,13 @@ func (r *PipelineRunReconciler) reconcileRunning(ctx context.Context, run *aiv1a
 			if run.Status.Phase != aiv1alpha1.PipelineRunPhaseWaitingForInput {
 				log.Info("step requires approval, waiting", "step", stepSpec.Name)
 
-				// Create diff preview Job so the user can review changes
-				diffJobName, err := r.createDiffJob(ctx, run)
-				if err != nil {
-					log.Error(err, "failed to create diff preview job (non-fatal)")
+				// Only create a diff preview for git-push steps
+				var diffJobName string
+				if stepSpec.Type == "git-push" {
+					diffJobName, err = r.createDiffJob(ctx, run)
+					if err != nil {
+						log.Error(err, "failed to create diff preview job (non-fatal)")
+					}
 				}
 
 				run.Status.Phase = aiv1alpha1.PipelineRunPhaseWaitingForInput
@@ -921,14 +924,23 @@ echo "checked out branch %s (credentials stripped from remotes, ownership set to
 }
 
 func (r *PipelineRunReconciler) configureCheckoutPRJob(_ context.Context, job *batchv1.Job, run *aiv1alpha1.PipelineRun, pipeline *aiv1alpha1.Pipeline, step *aiv1alpha1.StepSpec) error {
-	if pipeline.Spec.Trigger == nil || pipeline.Spec.Trigger.GitHubPRReview == nil {
-		return fmt.Errorf("git-checkout-pr requires a githubPRReview trigger on the pipeline")
-	}
 	if run.Spec.PRNumber == 0 {
 		return fmt.Errorf("git-checkout-pr requires a non-zero PRNumber on the PipelineRun")
 	}
 
-	prTrigger := pipeline.Spec.Trigger.GitHubPRReview
+	// Resolve repo owner, repo name, and secret from whichever PR trigger is configured
+	var owner, repo string
+	var secret aiv1alpha1.SecretKeyRef
+	switch {
+	case pipeline.Spec.Trigger != nil && pipeline.Spec.Trigger.GitHubPRReview != nil:
+		t := pipeline.Spec.Trigger.GitHubPRReview
+		owner, repo, secret = t.Owner, t.Repo, t.SecretRef
+	case pipeline.Spec.Trigger != nil && pipeline.Spec.Trigger.GitHubPR != nil:
+		t := pipeline.Spec.Trigger.GitHubPR
+		owner, repo, secret = t.Owner, t.Repo, t.SecretRef
+	default:
+		return fmt.Errorf("git-checkout-pr requires a githubPRReview or githubPR trigger on the pipeline")
+	}
 
 	baseBranch := run.Spec.BaseBranch
 	if baseBranch == "" {
@@ -947,12 +959,12 @@ git remote set-url origin https://github.com/%s/%s.git
 chown -R 1000:1000 %s
 echo "checked out PR #%d head (diff saved to artifacts/pr-diff.txt, credentials stripped)"`,
 		workspacePath, workspacePath,
-		prTrigger.Owner, prTrigger.Repo, workspacePath,
+		owner, repo, workspacePath,
 		workspacePath,
 		run.Spec.PRNumber,
 		workspacePath,
 		baseBranch, workspacePath,
-		prTrigger.Owner, prTrigger.Repo,
+		owner, repo,
 		workspacePath,
 		run.Spec.PRNumber)
 
@@ -971,9 +983,9 @@ echo "checked out PR #%d head (diff saved to artifacts/pr-diff.txt, credentials 
 					ValueFrom: &corev1.EnvVarSource{
 						SecretKeyRef: &corev1.SecretKeySelector{
 							LocalObjectReference: corev1.LocalObjectReference{
-								Name: prTrigger.SecretRef.Name,
+								Name: secret.Name,
 							},
-							Key: secretKey(prTrigger.SecretRef),
+							Key: secretKey(secret),
 						},
 					},
 				},

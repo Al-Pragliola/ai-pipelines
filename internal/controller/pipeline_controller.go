@@ -115,6 +115,8 @@ func (r *PipelineReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 		secretRef = trig.Jira.SecretRef
 	case trig.GitHubPRReview != nil:
 		secretRef = trig.GitHubPRReview.SecretRef
+	case trig.GitHubPR != nil:
+		secretRef = trig.GitHubPR.SecretRef
 	default:
 		log.Info("no trigger configured")
 		return ctrl.Result{}, nil
@@ -232,6 +234,8 @@ func (r *PipelineReconciler) runPoller(ctx context.Context, key types.Namespaced
 		interval, err = time.ParseDuration(spec.Trigger.Jira.PollInterval)
 	case spec.Trigger.GitHubPRReview != nil:
 		interval, err = time.ParseDuration(spec.Trigger.GitHubPRReview.PollInterval)
+	case spec.Trigger.GitHubPR != nil:
+		interval, err = time.ParseDuration(spec.Trigger.GitHubPR.PollInterval)
 	}
 	if err != nil || interval == 0 {
 		interval = 30 * time.Second
@@ -270,6 +274,8 @@ func (r *PipelineReconciler) poll(ctx context.Context, namespace, pipelineName s
 		issues, err = trigger.FetchJiraIssues(ctx, spec.Trigger.Jira, token, jiraEmail)
 	case spec.Trigger.GitHubPRReview != nil:
 		issues, err = trigger.FetchGitHubReviewRequests(ctx, spec.Trigger.GitHubPRReview, token, r.GitHubClient)
+	case spec.Trigger.GitHubPR != nil:
+		issues, err = trigger.FetchGitHubPRs(ctx, spec.Trigger.GitHubPR, token, r.GitHubClient)
 	}
 	if err != nil {
 		log.Error(err, "failed to fetch issues")
@@ -353,8 +359,8 @@ func (r *PipelineReconciler) createPipelineRun(ctx context.Context, namespace, p
 		IssueBody:   issue.Body,
 	}
 
-	// Populate PR-specific fields for GitHubPRReview triggers
-	if pipeline.Spec.Trigger != nil && pipeline.Spec.Trigger.GitHubPRReview != nil {
+	// Populate PR-specific fields for PR-based triggers
+	if pipeline.Spec.Trigger != nil && (pipeline.Spec.Trigger.GitHubPRReview != nil || pipeline.Spec.Trigger.GitHubPR != nil) {
 		runSpec.PRNumber = issue.Number
 		runSpec.PRAuthor = issue.PRAuthor
 		if runSpec.PRAuthor == "" {

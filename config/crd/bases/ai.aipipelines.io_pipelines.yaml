@@ -524,6 +524,48 @@ spec:
                     - repo
                     - secretRef
                     type: object
+                  githubPR:
+                    description: githubPR configures GitHub Pull Request polling.
+                    properties:
+                      excludeAuthors:
+                        description: |-
+                          excludeAuthors is a list of GitHub usernames whose PRs should be ignored
+                          (e.g. "dependabot[bot]", "renovate[bot]").
+                        items:
+                          type: string
+                        type: array
+                      owner:
+                        description: owner is the GitHub repository owner.
+                        type: string
+                      pollInterval:
+                        default: 60s
+                        description: pollInterval is how often to check for new PRs
+                          (e.g. "30s", "5m").
+                        type: string
+                      repo:
+                        description: repo is the GitHub repository name.
+                        type: string
+                      secretRef:
+                        description: |-
+                          secretRef references a K8s Secret containing the GitHub token.
+                          The secret must have a key named "token".
+                        properties:
+                          key:
+                            default: token
+                            description: key is the key within the Secret. Defaults
+                              to "token".
+                            type: string
+                          name:
+                            description: name is the name of the Secret.
+                            type: string
+                        required:
+                        - name
+                        type: object
+                    required:
+                    - owner
+                    - repo
+                    - secretRef
+                    type: object
                   githubPRReview:
                     description: githubPRReview configures GitHub PR review polling.
                     properties:

@@ -171,6 +171,57 @@ func FetchGitHubReviewRequests(ctx context.Context, spec *aiv1alpha1.GitHubPRRev
 	return issues, nil
 }
 
+// FetchGitHubPRs fetches open PRs, filtering out those from excludeAuthors.
+func FetchGitHubPRs(ctx context.Context, spec *aiv1alpha1.GitHubPRTriggerSpec, token string, client *CachedClient) ([]Issue, error) {
+	url := fmt.Sprintf("%s/repos/%s/%s/pulls?state=open&sort=created&direction=desc&per_page=100",
+		gitHubAPIBaseURL, spec.Owner, spec.Repo)
+
+	body, err := client.Get(ctx, url, token, gitHubAccept)
+	if err != nil {
+		return nil, err
+	}
+
+	var pulls []struct {
+		Number int    `json:"number"`
+		Title  string `json:"title"`
+		Body   string `json:"body"`
+		User   struct {
+			Login string `json:"login"`
+		} `json:"user"`
+		Base struct {
+			Ref string `json:"ref"`
+		} `json:"base"`
+		Head struct {
+			Ref string `json:"ref"`
+		} `json:"head"`
+	}
+	if err := json.Unmarshal(body, &pulls); err != nil {
+		return nil, err
+	}
+
+	excluded := make(map[string]bool, len(spec.ExcludeAuthors))
+	for _, a := range spec.ExcludeAuthors {
+		excluded[a] = true
+	}
+
+	var issues []Issue
+	for _, pr := range pulls {
+		if excluded[pr.User.Login] {
+			continue
+		}
+		issues = append(issues, Issue{
+			Number:     pr.Number,
+			Key:        fmt.Sprintf("#PR-%d", pr.Number),
+			Title:      pr.Title,
+			Body:       pr.Body,
+			PRAuthor:   pr.User.Login,
+			BaseBranch: pr.Base.Ref,
+			HeadBranch: pr.Head.Ref,
+		})
+	}
+	return issues, nil
+}
+
 // FlattenADF extracts plain text from Jira's Atlassian Document Format.
 func FlattenADF(v any) string {
 	if v == nil {

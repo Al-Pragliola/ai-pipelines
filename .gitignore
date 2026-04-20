@@ -47,3 +47,5 @@ aipipe
 # Copy from config/samples/ and fill in your values — see local/README.md
 local/*
 !local/README.md
+
+architecture-review.md
